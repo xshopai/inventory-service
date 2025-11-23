@@ -43,6 +43,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 FROM dependencies AS development
 
 # Copy application code
+# Note: In development, mount code as volume: docker run -v ./:/app
 COPY --chown=inventoryuser:appgroup . .
 
 # Create logs directory
@@ -54,9 +55,9 @@ USER inventoryuser
 # Expose port
 EXPOSE 1005
 
-# Health check
+# Health check (using Python to avoid curl dependency)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:1005/readiness || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:1005/readiness')" || exit 1
 
 # Start development server with auto-reload
 CMD ["flask", "run", "--host", "0.0.0.0", "--port", "1005", "--reload"]
@@ -68,16 +69,14 @@ FROM base AS production
 
 # Copy installed dependencies from dependencies stage
 COPY --from=dependencies /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
-COPY --from=dependencies /usr/local/bin /usr/local/bin
+COPY --from=dependencies /usr/local/bin/gunicorn /usr/local/bin/gunicorn
+COPY --from=dependencies /usr/local/bin/flask /usr/local/bin/flask
 
-# Copy application code
+# Copy application code (unnecessary files excluded via .dockerignore)
 COPY --chown=inventoryuser:appgroup . .
 
 # Create logs directory
 RUN mkdir -p logs && chown -R inventoryuser:appgroup logs
-
-# Remove unnecessary files for production
-RUN rm -rf tests/ .git/ .github/ .vscode/ *.md .env.* docker-compose* __pycache__/ .pytest_cache/
 
 # Switch to non-root user
 USER inventoryuser
@@ -85,14 +84,17 @@ USER inventoryuser
 # Expose port
 EXPOSE 1005
 
-# Health check
+# Health check (using Python to avoid curl dependency)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:1005/readiness || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:1005/readiness')" || exit 1
 
-# Start production server with gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:1005", "--workers", "4", "--timeout", "120", "app:app"]
+# Start production server with gunicorn (workers configurable via WORKERS env var, default: 4)
+CMD sh -c "gunicorn --bind 0.0.0.0:1005 --workers ${WORKERS:-4} --timeout 120 app:app"
 
-# Labels for better image management
+# Labels for better image management and security scanning
 LABEL maintainer="AIOutlet Team"
 LABEL service="inventory-service"
 LABEL version="1.0.0"
+LABEL org.opencontainers.image.source="https://github.com/aioutlet/aioutlet"
+LABEL org.opencontainers.image.description="Inventory Service for AIOutlet platform"
+LABEL org.opencontainers.image.vendor="AIOutlet"
