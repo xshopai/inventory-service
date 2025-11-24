@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  # MySQL for Inventory Service
+  inventory-mysql:
+    image: mysql:latest
+    container_name: inventory-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: inventory_root_pass_123
+      MYSQL_DATABASE: inventory_service_db
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: admin123
+    volumes:
+      - inventory_mysql_data:/var/lib/mysql
+    networks:
+      - aioutlet-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "admin", "-padmin123"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Inventory Service
+  inventory-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: inventory-service
+    restart: unless-stopped
+    ports:
+      - "1007:1007"
+    environment:
+      - FLASK_ENV=production
+      - PORT=1007
+      - DATABASE_URL=mysql+pymysql://admin:admin123@inventory-mysql:3306/inventory_service_db
+      - RABBITMQ_URL=amqp://admin:admin123@rabbitmq-message-broker:5672
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+    depends_on:
+      inventory-mysql:
+        condition: service_healthy
+    networks:
+      - aioutlet-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1007/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  inventory_mysql_data:
+    name: inventory_mysql_data
+
+networks:
+  aioutlet-network:
+    external: true
