@@ -1,109 +1,91 @@
-# Inventory Service
+# 📦 Inventory Service
 
-A Flask-based microservice for managing product inventory in the AI Outlet e-commerce platform.
+Inventory management microservice for xShop.ai - handles product stock levels, reservations, stock movements, and automated alerts.
 
-## Features
+## 🚀 Quick Start
 
-- **Inventory Management**: Create, read, update, and delete inventory items
-- **Stock Tracking**: Real-time stock level monitoring with automated alerts
-- **Reservation System**: Reserve inventory for orders with expiration management
-- **Stock Movements**: Complete audit trail of all stock changes
-- **Caching**: Redis-based caching for improved performance
-- **API Documentation**: Auto-generated Swagger/OpenAPI documentation
-- **Health Monitoring**: Built-in health checks for all dependencies
-- **Comprehensive Testing**: Unit and integration tests with high coverage
+### Prerequisites
 
-## Technology Stack
-
-- **Framework**: Flask 2.3.3 with Flask-RESTX for API documentation
-- **Database**: MySQL 8.0 with SQLAlchemy 2.0.21 ORM
-- **Caching**: Redis for session and query caching
-- **Testing**: pytest with comprehensive test suite
-- **Containerization**: Docker and Docker Compose
-- **Code Quality**: Black, flake8, pre-commit hooks
-
-## Project Structure
-
-```
-inventory-service/
-├── app/
-│   ├── __init__.py          # Application factory
-│   ├── controllers/         # REST API controllers
-│   ├── models/             # SQLAlchemy database models
-│   ├── repositories/       # Data access layer
-│   ├── services/          # Business logic layer
-│   └── utils/             # Utility functions and helpers
-├── tests/                 # Comprehensive test suite
-├── database/             # Database initialization scripts
-├── config.py            # Configuration management
-├── requirements.txt     # Python dependencies
-├── run.py              # Application entry point
-├── Dockerfile          # Container configuration
-└── docker-compose.yml  # Multi-container orchestration
-```
-
-## Quick Start
+- **Python** 3.11+ ([Download](https://www.python.org/downloads/))
+- **MySQL** 8.0+ ([Download](https://dev.mysql.com/downloads/))
+- **Redis** 7+ ([Install Guide](https://redis.io/docs/getting-started/))
+- **Dapr CLI** 1.16+ ([Install Guide](https://docs.dapr.io/getting-started/install-dapr-cli/))
 
 ### Using Docker Compose (Recommended)
 
-1. **Clone and navigate to the service directory**:
+**1. Start All Services**
+```bash
+cd inventory-service
+docker-compose up -d
+```
 
-   ```bash
-   cd inventory-service
-   ```
+**2. Verify Services**
+```bash
+docker-compose ps
+```
 
-2. **Start all services**:
-
-   ```bash
-   docker-compose up -d
-   ```
-
-3. **Verify services are running**:
-
-   ```bash
-   docker-compose ps
-   ```
-
-4. **Access the API**:
-   - API Base URL: http://localhost:5003/api/v1
-   - Documentation: http://localhost:5003/api/v1/docs/
-   - Health Check: http://localhost:5003/api/v1/health/
+**3. Access the API**
+- API Base URL: http://localhost:5003/api/v1
+- Documentation: http://localhost:5003/api/v1/docs/
+- Health Check: http://localhost:5003/api/v1/health/
 
 ### Local Development Setup
 
-1. **Create virtual environment**:
+**1. Create Virtual Environment**
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
 
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
+**2. Install Dependencies**
+```bash
+pip install -r requirements.txt
+```
 
-2. **Install dependencies**:
+**3. Set Environment Variables**
+```bash
+export FLASK_ENV=development
+export DATABASE_URL=mysql+pymysql://user:pass@localhost:3306/inventory_db
+export REDIS_URL=redis://localhost:6379/0
+```
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+**4. Initialize Database**
+```bash
+python -c "from app import create_app; from app.models import db; app = create_app('development'); app.app_context().push(); db.create_all()"
+```
 
-3. **Set environment variables**:
+**5. Run Application**
+```bash
+python run.py
+```
 
-   ```bash
-   export FLASK_ENV=development
-   export DATABASE_URL=mysql+pymysql://user:pass@localhost:3306/inventory_db
-   export REDIS_URL=redis://localhost:6379/0
-   ```
+### Common Commands
 
-4. **Initialize database**:
+```bash
+# Run tests
+pytest
 
-   ```bash
-   python -c "from app import create_app; from app.models import db; app = create_app('development'); app.app_context().push(); db.create_all()"
-   ```
+# Run with coverage
+pytest --cov=app --cov-report=html
 
-5. **Run the application**:
-   ```bash
-   python run.py
-   ```
+# Lint code
+flake8 app tests
 
-## API Endpoints
+# Format code
+black app tests
+```
+
+## 📚 Documentation
+
+| Document | Description |
+|----------|-------------|
+| [📖 Developer Guide](docs/DEVELOPER_GUIDE.md) | Local setup, debugging, daily workflows |
+| [📘 Technical Reference](docs/TECHNICAL.md) | Architecture, security, monitoring |
+| [🤝 Contributing](docs/CONTRIBUTING.md) | Contribution guidelines and workflow |
+
+**API Documentation**: Flask-RESTX auto-generates interactive docs at `/api/v1/docs/`.
+
+## ⚙️ Configuration
 
 ### Inventory Management
 
