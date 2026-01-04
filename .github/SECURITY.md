@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Inventory Service manages product inventory, stock levels, and warehouse operations for the xShop.ai platform. It handles critical business data including product availability, pricing information, and supply chain data.
+The Inventory Service manages product inventory, stock levels, and warehouse operations for the xshop.ai platform. It handles critical business data including product availability, pricing information, and supply chain data.
 
 ## Supported Versions
 
@@ -193,7 +193,7 @@ Inventory service vulnerabilities can affect business operations:
 
 1. **Do NOT** open a public issue
 2. **Do NOT** attempt to modify inventory data
-3. **Email** our security team at: <security@aioutlet.com>
+3. **Email** our security team at: <security@xshopai.com>
 
 ### Critical Security Areas
 
@@ -352,9 +352,9 @@ The Inventory Service adheres to:
 
 For security-related questions or concerns:
 
-- **Email**: <security@aioutlet.com>
+- **Email**: <security@xshopai.com>
 - **Emergency**: Include "URGENT INVENTORY SECURITY" in subject line
-- **Business Continuity**: Copy <operations@aioutlet.com>
+- **Business Continuity**: Copy <operations@xshopai.com>
 
 ---
 

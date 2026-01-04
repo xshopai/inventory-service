@@ -72,7 +72,7 @@ class DaprSecretManager:
             Dictionary with JWT configuration
         """
         import os
-        return {\n            'secret': self.get_secret('JWT_SECRET'),\n            'algorithm': os.environ.get('JWT_ALGORITHM', 'HS256'),\n            'expiration': int(os.environ.get('JWT_EXPIRATION', '3600')),\n            'issuer': os.environ.get('JWT_ISSUER', 'auth-service'),\n            'audience': os.environ.get('JWT_AUDIENCE', 'aioutlet-platform')\n        }
+        return {\n            'secret': self.get_secret('JWT_SECRET'),\n            'algorithm': os.environ.get('JWT_ALGORITHM', 'HS256'),\n            'expiration': int(os.environ.get('JWT_EXPIRATION', '3600')),\n            'issuer': os.environ.get('JWT_ISSUER', 'auth-service'),\n            'audience': os.environ.get('JWT_AUDIENCE', 'xshopai-platform')\n        }
 
 
 

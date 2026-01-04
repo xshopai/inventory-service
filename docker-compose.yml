@@ -16,7 +16,7 @@ services:
     volumes:
       - inventory_mysql_data:/var/lib/mysql
     networks:
-      - aioutlet-network
+      - xshopai-network
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "admin", "-padmin123"]
       interval: 10s
@@ -42,7 +42,7 @@ services:
       inventory-mysql:
         condition: service_healthy
     networks:
-      - aioutlet-network
+      - xshopai-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:1007/health"]
       interval: 30s
@@ -55,5 +55,5 @@ volumes:
     name: inventory_mysql_data
 
 networks:
-  aioutlet-network:
+  xshopai-network:
     external: true
