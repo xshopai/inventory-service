@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Inventory Service manages product inventory, stock levels, and warehouse operations for the xshop.ai platform. It handles critical business data including product availability, pricing information, and supply chain data.
+The Inventory Service manages product inventory, stock levels, and warehouse operations for the xshopai platform. It handles critical business data including product availability, pricing information, and supply chain data.
 
 ## Supported Versions
 

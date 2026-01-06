@@ -15,7 +15,7 @@ def info():
     return jsonify({
         'service': os.environ.get('NAME', 'inventory-service'),
         'version': os.environ.get('VERSION', '1.0.0'),
-        'description': 'Inventory management microservice for xshop.ai platform',
+        'description': 'Inventory management microservice for xshopai platform',
         'environment': os.environ.get('FLASK_ENV', 'development'),
     }), 200
 

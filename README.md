@@ -1,6 +1,6 @@
 # 📦 Inventory Service
 
-Inventory management microservice for xshop.ai - handles product stock levels, reservations, stock movements, and automated alerts.
+Inventory management microservice for xshopai - handles product stock levels, reservations, stock movements, and automated alerts.
 
 ## 🚀 Quick Start
 
