@@ -303,7 +303,7 @@ python run.py
 
 ## License
 
-This project is part of the AI Outlet e-commerce platform. All rights reserved.
+This project is part of the xshopai e-commerce platform. All rights reserved.
 
 ## Support
 
