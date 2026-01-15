@@ -15,7 +15,8 @@ def get_database_uri():
             f"{db_config['host']}:{db_config['port']}/{db_config['database']}"
         )
     except Exception as e:
-        # Fallback to environment variables if Dapr not available (for testing)
+        # Fallback to environment variables if Dapr not available (for local dev/testing)
+        # Note: These use uppercase env vars (standard convention) while Dapr secrets use lowercase-hyphenated
         user = os.environ.get('MYSQL_USER', 'admin')
         password = os.environ.get('MYSQL_PASSWORD', 'admin123')
         host = os.environ.get('DATABASE_HOST', 'localhost')

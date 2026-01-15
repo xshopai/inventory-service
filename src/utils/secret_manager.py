@@ -55,12 +55,12 @@ class DaprSecretManager:
             Dictionary with database configuration
         """
         return {
-            'host': self.get_secret('DATABASE_HOST'),
-            'port': int(self.get_secret('DATABASE_PORT')),
-            'database': self.get_secret('MYSQL_DATABASE'),
-            'user': self.get_secret('MYSQL_USER'),
-            'password': self.get_secret('MYSQL_PASSWORD'),
-            'root_password': self.get_secret('MYSQL_ROOT_PASSWORD')
+            'host': self.get_secret('mysql-host'),
+            'port': int(self.get_secret('mysql-port')),
+            'database': self.get_secret('mysql-database'),
+            'user': self.get_secret('mysql-username'),
+            'password': self.get_secret('mysql-password'),
+            'root_password': self.get_secret('mysql-root-password')
         }
     
     def get_jwt_config(self) -> Dict[str, Any]:
@@ -72,7 +72,13 @@ class DaprSecretManager:
             Dictionary with JWT configuration
         """
         import os
-        return {\n            'secret': self.get_secret('JWT_SECRET'),\n            'algorithm': os.environ.get('JWT_ALGORITHM', 'HS256'),\n            'expiration': int(os.environ.get('JWT_EXPIRATION', '3600')),\n            'issuer': os.environ.get('JWT_ISSUER', 'auth-service'),\n            'audience': os.environ.get('JWT_AUDIENCE', 'xshopai-platform')\n        }
+        return {
+            'secret': self.get_secret('jwt-secret'),
+            'algorithm': os.environ.get('JWT_ALGORITHM', 'HS256'),
+            'expiration': int(os.environ.get('JWT_EXPIRATION', '3600')),
+            'issuer': os.environ.get('JWT_ISSUER', 'auth-service'),
+            'audience': os.environ.get('JWT_AUDIENCE', 'xshopai-platform')
+        }
 
 
 

@@ -1,0 +1,271 @@
+# ==============================================================================
+# Deploy Inventory Service to Azure Container Apps
+# ==============================================================================
+# This workflow deploys the inventory-service to Azure Container Apps.
+# 
+# Prerequisites:
+# - Infrastructure Layer 4 must be deployed first (creates Container App)
+# - Azure credentials configured in GitHub secrets
+# - MySQL credentials configured in Azure Key Vault:
+#   - mysql-host
+#   - mysql-port
+#   - mysql-username
+#   - mysql-password
+#
+# Triggers:
+# - Manual: workflow_dispatch with environment selection
+# - Auto: Push to main branch (code changes only)
+# ==============================================================================
+
+name: Deploy Inventory Service (Container Apps)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+        default: 'dev'
+      
+      skip_tests:
+        description: 'Skip tests (not recommended for prod)'
+        required: false
+        type: boolean
+        default: false
+
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'requirements.txt'
+      - 'requirements-dev.txt'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'main.py'
+      - 'run.py'
+
+permissions:
+  id-token: write
+  contents: read
+  packages: write
+
+jobs:
+  # ==============================================================================
+  # Job 1: Build, Test & Deploy
+  # ==============================================================================
+  deploy:
+    name: Deploy to ${{ inputs.environment || 'development' }}
+    uses: xshopai/infrastructure/.github/workflows/reusable-deploy-container-app.yml@main
+    with:
+      service_name: inventory-service
+      environment: ${{ inputs.environment || 'dev' }}
+      dockerfile_path: Dockerfile
+      docker_context: .
+      docker_target: production
+      container_port: 8005
+      
+      # Dapr configuration
+      dapr_enabled: true
+      dapr_app_protocol: http
+      dapr_app_port: 8005
+      
+      # Ingress configuration
+      ingress_enabled: true
+      ingress_external: true
+      
+      # Resource allocation (Python Flask app with MySQL)
+      cpu: '0.5'
+      memory: '1Gi'
+      min_replicas: 1
+      max_replicas: 5
+      
+      # Health check
+health_probe_path: /liveness
+    
+    secrets: inherit
+
+  # ==============================================================================
+  # Job 2: Post-Deployment Verification
+  # ==============================================================================
+  verify:
+    name: Verify Deployment
+    needs: deploy
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'dev' }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Get Container App URL
+        id: app-url
+        run: |
+          APP_URL=$(az containerapp show \
+            --name inventory-service \
+            --resource-group rg-xshopai-${{ inputs.environment || 'dev' }} \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv)
+          
+          echo "url=https://${APP_URL}" >> $GITHUB_OUTPUT
+          echo "### Deployment URL: https://${APP_URL}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Health Check
+        run: |
+          echo "Waiting for service to stabilize..."
+          sleep 15
+          
+          HEALTH_URL="${{ steps.app-url.outputs.url }}/health"
+          echo "Checking: $HEALTH_URL"
+          
+          MAX_RETRIES=5
+          RETRY_COUNT=0
+          
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_URL || echo "000")
+            
+            if [ "$RESPONSE" = "200" ]; then
+              echo "✅ Health check passed!"
+              
+              # Get detailed health info
+              HEALTH_DATA=$(curl -s $HEALTH_URL)
+              echo "Health Response: $HEALTH_DATA"
+              
+              echo "### ✅ Deployment Successful!" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "**Service:** inventory-service" >> $GITHUB_STEP_SUMMARY
+              echo "**Environment:** ${{ inputs.environment || 'dev' }}" >> $GITHUB_STEP_SUMMARY
+              echo "**URL:** ${{ steps.app-url.outputs.url }}" >> $GITHUB_STEP_SUMMARY
+              echo "**Health Status:** Healthy ✅" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "**Health Details:**" >> $GITHUB_STEP_SUMMARY
+              echo '```json' >> $GITHUB_STEP_SUMMARY
+              echo "$HEALTH_DATA" | jq . >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              
+              exit 0
+            fi
+            
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            echo "Health check failed (attempt $RETRY_COUNT/$MAX_RETRIES): HTTP $RESPONSE"
+            
+            if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+              echo "Retrying in 10 seconds..."
+              sleep 10
+            fi
+          done
+          
+          echo "❌ Health check failed after $MAX_RETRIES attempts"
+          echo "### ⚠️ Deployment Warning" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Service:** inventory-service" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${{ inputs.environment || 'dev' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** ${{ steps.app-url.outputs.url }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Health Status:** Unhealthy ❌" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Please check Container App logs for errors." >> $GITHUB_STEP_SUMMARY
+          exit 1
+
+      - name: API Endpoint Tests
+        if: success()
+        run: |
+          BASE_URL="${{ steps.app-url.outputs.url }}"
+          echo "Testing API endpoints..."
+          
+          # Test version endpoint if it exists
+          echo "Testing /version..."
+          VERSION_RESPONSE=$(curl -s "${BASE_URL}/version" || echo "{}")
+          echo "Version: $VERSION_RESPONSE"
+          
+          # Test readiness endpoint
+          echo "Testing /health/ready..."
+          READY_RESPONSE=$(curl -s "${BASE_URL}/health/ready")
+          echo "Readiness: $READY_RESPONSE"
+          
+          echo "### 🧪 API Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version Endpoint:**" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          echo "$VERSION_RESPONSE" | jq . >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Readiness Check:**" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          echo "$READY_RESPONSE" | jq . >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Check Dapr Integration
+        if: success()
+        run: |
+          echo "Verifying Dapr sidecar is enabled..."
+          
+          DAPR_STATUS=$(az containerapp show \
+            --name inventory-service \
+            --resource-group rg-xshopai-${{ inputs.environment || 'dev' }} \
+            --query properties.configuration.dapr.enabled \
+            -o tsv)
+          
+          DAPR_APP_ID=$(az containerapp show \
+            --name inventory-service \
+            --resource-group rg-xshopai-${{ inputs.environment || 'dev' }} \
+            --query properties.configuration.dapr.appId \
+            -o tsv)
+          
+          echo "Dapr Enabled: $DAPR_STATUS"
+          echo "Dapr App ID: $DAPR_APP_ID"
+          
+          if [ "$DAPR_STATUS" = "true" ]; then
+            echo "✅ Dapr sidecar is enabled"
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 🔧 Dapr Configuration" >> $GITHUB_STEP_SUMMARY
+            echo "**Status:** Enabled ✅" >> $GITHUB_STEP_SUMMARY
+            echo "**App ID:** $DAPR_APP_ID" >> $GITHUB_STEP_SUMMARY
+            echo "**Protocol:** HTTP" >> $GITHUB_STEP_SUMMARY
+            echo "**App Port:** 8005" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Dapr sidecar is NOT enabled"
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### ⚠️ Dapr Configuration" >> $GITHUB_STEP_SUMMARY
+            echo "**Status:** Not Enabled" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Check MySQL Connection
+        if: success()
+        run: |
+          echo "Verifying MySQL database connection..."
+          
+          # Check if MySQL environment variables are set in Container App
+          MYSQL_HOST=$(az containerapp show \
+            --name inventory-service \
+            --resource-group rg-xshopai-${{ inputs.environment || 'dev' }} \
+            --query "properties.template.containers[0].env[?name=='MYSQL_HOST'].value" \
+            -o tsv 2>/dev/null || echo "Not configured")
+          
+          MYSQL_DATABASE=$(az containerapp show \
+            --name inventory-service \
+            --resource-group rg-xshopai-${{ inputs.environment || 'dev' }} \
+            --query "properties.template.containers[0].env[?name=='MYSQL_DATABASE'].value" \
+            -o tsv 2>/dev/null || echo "Not configured")
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🗄️ MySQL Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "**Host:** ${MYSQL_HOST}" >> $GITHUB_STEP_SUMMARY
+          echo "**Database:** ${MYSQL_DATABASE}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> MySQL credentials are stored securely in Azure Key Vault" >> $GITHUB_STEP_SUMMARY
+
+      - name: Azure Logout
+        if: always()
+        run: az logout

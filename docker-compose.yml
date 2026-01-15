@@ -31,10 +31,10 @@ services:
     container_name: inventory-service
     restart: unless-stopped
     ports:
-      - "1007:1007"
+      - "8005:8005"
     environment:
       - FLASK_ENV=production
-      - PORT=1007
+      - PORT=8005
       - DATABASE_URL=mysql+pymysql://admin:admin123@inventory-mysql:3306/inventory_service_db
       - RABBITMQ_URL=amqp://admin:admin123@rabbitmq-message-broker:5672
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
@@ -44,7 +44,7 @@ services:
     networks:
       - xshopai-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:1007/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
       interval: 30s
       timeout: 10s
       retries: 3

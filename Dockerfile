@@ -53,14 +53,14 @@ RUN mkdir -p logs && chown -R inventoryuser:appgroup logs
 USER inventoryuser
 
 # Expose port
-EXPOSE 1005
+EXPOSE 8005
 
 # Health check (using Python to avoid curl dependency)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:1005/readiness')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8005/readiness')" || exit 1
 
 # Start development server with auto-reload
-CMD ["flask", "run", "--host", "0.0.0.0", "--port", "1005", "--reload"]
+CMD ["flask", "run", "--host", "0.0.0.0", "--port", "8005", "--reload"]
 
 # -----------------------------------------------------------------------------
 # Production stage - Optimized for production deployment
@@ -82,14 +82,14 @@ RUN mkdir -p logs && chown -R inventoryuser:appgroup logs
 USER inventoryuser
 
 # Expose port
-EXPOSE 1005
+EXPOSE 8005
 
 # Health check (using Python to avoid curl dependency)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:1005/readiness')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8005/readiness')" || exit 1
 
 # Start production server with gunicorn (workers configurable via WORKERS env var, default: 4)
-CMD sh -c "gunicorn --bind 0.0.0.0:1005 --workers ${WORKERS:-4} --timeout 120 app:app"
+CMD sh -c "gunicorn --bind 0.0.0.0:8005 --workers ${WORKERS:-4} --timeout 120 app:app"
 
 # Labels for better image management and security scanning
 LABEL maintainer="xshopai Team"

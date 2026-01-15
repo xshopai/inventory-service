@@ -25,9 +25,9 @@ docker-compose ps
 ```
 
 **3. Access the API**
-- API Base URL: http://localhost:5003/api/v1
-- Documentation: http://localhost:5003/api/v1/docs/
-- Health Check: http://localhost:5003/api/v1/health/
+- API Base URL: http://localhost:8005/api/v1
+- Documentation: http://localhost:8005/api/v1/docs/
+- Health Check: http://localhost:8005/api/v1/health/
 
 ### Local Development Setup
 
@@ -119,7 +119,7 @@ black app tests
 | `PRODUCT_SERVICE_URL`   | Product service base URL                     | Optional   |
 | `CACHE_DEFAULT_TIMEOUT` | Cache TTL in seconds                         | 300        |
 | `HOST`                  | Server host                                  | 0.0.0.0    |
-| `PORT`                  | Server port                                  | 5000       |
+| `PORT`                  | Server port                                  | 8005       |
 
 ## Running Tests
 
@@ -195,7 +195,7 @@ pytest tests/test_repositories.py
 ### Health Checks
 
 ```bash
-curl http://localhost:5003/api/v1/health/
+curl http://localhost:8005/api/v1/health/
 ```
 
 ### Docker Container Logs
