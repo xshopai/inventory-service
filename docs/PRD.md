@@ -31,38 +31,77 @@
 ## 1. Executive Summary
 
 ### 1.1 Purpose
-<!-- One paragraph describing what Inventory Service does and why it exists -->
+
+The Inventory Service is a core microservice within the xshopai e-commerce platform responsible for real-time stock management, inventory reservations, and availability tracking. It serves as the single source of truth for product availability across all sales channels, ensuring accurate stock levels are maintained and preventing overselling. The service provides both synchronous APIs for immediate stock queries and asynchronous event-driven updates to notify dependent services of inventory changes.
 
 ### 1.2 Business Objectives
-<!-- 
-- Objective 1
-- Objective 2
-- Objective 3
--->
+
+- **Prevent Overselling**: Ensure customers can only purchase products that are actually in stock by maintaining accurate, real-time inventory counts and supporting atomic reservation operations.
+- **Real-Time Availability**: Provide instant stock availability information to the Product Service and customer-facing applications, enabling accurate "In Stock", "Low Stock", and "Out of Stock" displays.
+- **Support Order Fulfillment**: Enable the Order Service to reserve inventory during checkout and confirm or release reservations based on order outcomes.
+- **Enable Inventory Operations**: Support warehouse and admin operations including stock adjustments, bulk updates, and inventory reconciliation.
+- **Proactive Notifications**: Alert dependent services when stock levels change significantly (low stock, back in stock, out of stock) to trigger appropriate business responses.
 
 ### 1.3 Success Metrics
 
 | Metric | Target | Measurement Method |
 |--------|--------|-------------------|
-| <!-- Metric 1 --> | <!-- Target --> | <!-- How measured --> |
-| <!-- Metric 2 --> | <!-- Target --> | <!-- How measured --> |
+| Oversell Rate | < 0.1% of orders | Orders with items that couldn't be fulfilled due to stock issues / Total orders |
+| Stock Sync Latency | < 500ms | Time from stock change to Product Service receiving update event (p95) |
+| Reservation Success Rate | > 99.5% | Successful reservations / Total reservation attempts |
+| API Response Time (p95) | < 100ms | 95th percentile response time for stock query endpoints |
+| Service Availability | 99.9% uptime | Total uptime / Total time in measurement period |
 
 ---
 
 ## 2. Business Context
 
 ### 2.1 Problem Statement
-<!-- What business problem does Inventory Service solve? -->
 
-### 2.2 Target Users
+E-commerce platforms face critical inventory management challenges that directly impact customer satisfaction and business revenue:
+
+- **Overselling**: Without real-time stock tracking, customers can purchase products that are no longer available, leading to order cancellations, refunds, and damaged trust.
+- **Checkout Abandonment**: Slow or inaccurate availability checks during checkout cause customers to abandon their carts.
+- **Stale Product Displays**: Product listings showing incorrect availability status frustrate customers and reduce conversion rates.
+- **Order Fulfillment Delays**: Lack of inventory reservations during checkout leads to race conditions where multiple orders compete for the same stock.
+- **Manual Reconciliation Errors**: Without proper audit trails, inventory discrepancies are difficult to identify and resolve.
+
+### 2.2 Solution Overview
+
+The Inventory Service addresses these challenges by providing:
+
+- **Atomic Stock Operations**: All inventory updates are performed atomically to prevent race conditions and ensure data consistency.
+- **Reservation System**: Temporary holds on inventory during checkout prevent overselling while orders are being processed.
+- **Event-Driven Updates**: Real-time notifications to dependent services when stock levels change, ensuring all systems reflect current availability.
+- **Comprehensive Audit Trail**: Complete history of all stock movements for reconciliation, debugging, and compliance.
+
+### 2.3 Target Users
 
 | User Type | Description | Primary Needs |
 |-----------|-------------|---------------|
-| <!-- User 1 --> | <!-- Description --> | <!-- Needs --> |
-| <!-- User 2 --> | <!-- Description --> | <!-- Needs --> |
+| Customer (via Product Service) | End-users browsing and purchasing products | Accurate real-time availability information |
+| Order Service | Internal service managing checkout and orders | Reserve stock, confirm/release reservations, validate availability |
+| Product Service | Internal service managing product catalog | Stock level updates for product display |
+| Admin Users | Platform administrators and operations staff | Stock adjustments, bulk updates, inventory reports, audit access |
 
-### 2.3 Service Scope
-<!-- Brief description of service boundaries - what it does and doesn't do -->
+### 2.4 Scope
+
+**In Scope:**
+- Real-time stock level management (available, reserved, total quantities)
+- Inventory reservations for pending orders
+- Stock adjustments with reason tracking
+- Low stock and out-of-stock alerts
+- Bulk inventory operations
+- Stock movement audit trail
+- Integration with Product Service and Order Service
+
+**Out of Scope:**
+- Product catalog management (handled by Product Service)
+- Order processing logic (handled by Order Service)
+- Pricing and promotions
+- Physical warehouse management
+- Supplier and purchase order management
+- Demand forecasting
 
 ---
 
