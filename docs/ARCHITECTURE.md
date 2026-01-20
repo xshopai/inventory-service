@@ -321,25 +321,388 @@ mysql+pymysql://{user}:{password}@{host}:{port}/{database}
 
 ### 4.1 Endpoint Summary
 
-| Method                                   | Endpoint | Description | Auth |
-| ---------------------------------------- | -------- | ----------- | ---- |
-| <!-- TODO: All 18 endpoints from PRD --> |          |             |      |
+| Method   | Endpoint                                   | Description                   | Auth          |
+| -------- | ------------------------------------------ | ----------------------------- | ------------- |
+| `GET`    | `/health`                                  | Liveness probe                | None          |
+| `GET`    | `/readiness`                               | Readiness probe               | None          |
+| `GET`    | `/api/inventory/stock/{sku}`               | Query stock for single SKU    | Service Token |
+| `POST`   | `/api/inventory/stock/batch`               | Query stock for multiple SKUs | Service Token |
+| `GET`    | `/api/inventory`                           | List inventory records        | Admin JWT     |
+| `POST`   | `/api/inventory`                           | Create inventory record       | Admin JWT     |
+| `GET`    | `/api/inventory/{sku}`                     | Get inventory by SKU          | Admin JWT     |
+| `PUT`    | `/api/inventory/{sku}`                     | Update inventory quantity     | Admin JWT     |
+| `DELETE` | `/api/inventory/{sku}`                     | Delete inventory record       | Admin JWT     |
+| `GET`    | `/api/inventory/reservations`              | List reservations             | Admin JWT     |
+| `POST`   | `/api/inventory/reservations`              | Create reservation            | Service Token |
+| `GET`    | `/api/inventory/reservations/{id}`         | Get reservation by ID         | Service Token |
+| `POST`   | `/api/inventory/reservations/{id}/confirm` | Confirm reservation           | Service Token |
+| `POST`   | `/api/inventory/reservations/{id}/release` | Release reservation           | Service Token |
 
 ### 4.2 Request/Response Specifications
 
-<!-- TODO: Detailed specs for each endpoint -->
+#### 4.2.1 Query Stock for Single SKU
+
+**Endpoint:** `GET /api/inventory/stock/{sku}`
+
+**Path Parameters:**
+
+| Parameter | Type   | Required | Description |
+| --------- | ------ | -------- | ----------- |
+| `sku`     | string | Yes      | Product SKU |
+
+**Response (200 OK):**
+
+```json
+{
+  "sku": "SKU-12345",
+  "quantity_available": 100,
+  "quantity_reserved": 15,
+  "in_stock": true
+}
+```
+
+**Error Responses:**
+
+| Status | Code            | Description          |
+| ------ | --------------- | -------------------- |
+| 404    | `SKU_NOT_FOUND` | SKU not in inventory |
+
+---
+
+#### 4.2.2 Query Stock for Multiple SKUs
+
+**Endpoint:** `POST /api/inventory/stock/batch`
+
+**Request Body:**
+
+```json
+{
+  "skus": ["SKU-001", "SKU-002", "SKU-003"],
+  "in_stock_only": false
+}
+```
+
+| Field           | Type     | Required | Description                   |
+| --------------- | -------- | -------- | ----------------------------- |
+| `skus`          | string[] | Yes      | Array of SKUs (max 50)        |
+| `in_stock_only` | boolean  | No       | Filter to only in-stock items |
+
+**Response (200 OK):**
+
+```json
+{
+  "items": [
+    {
+      "sku": "SKU-001",
+      "quantity_available": 100,
+      "quantity_reserved": 10,
+      "in_stock": true
+    },
+    {
+      "sku": "SKU-002",
+      "quantity_available": 0,
+      "quantity_reserved": 0,
+      "in_stock": false
+    }
+  ],
+  "not_found": ["SKU-003"]
+}
+```
+
+---
+
+#### 4.2.3 List Inventory Records
+
+**Endpoint:** `GET /api/inventory`
+
+**Query Parameters:**
+
+| Parameter | Type    | Required | Default | Description              |
+| --------- | ------- | -------- | ------- | ------------------------ |
+| `page`    | integer | No       | 1       | Page number              |
+| `limit`   | integer | No       | 20      | Items per page (max 100) |
+
+**Response (200 OK):**
+
+```json
+{
+  "items": [
+    {
+      "id": 1,
+      "sku": "SKU-12345",
+      "product_id": "prod-abc-123",
+      "quantity_available": 100,
+      "quantity_reserved": 15,
+      "reorder_level": 10,
+      "max_stock": 500,
+      "cost_per_unit": 25.99,
+      "last_restocked": "2025-01-15T10:30:00Z",
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-20T14:30:00Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 150,
+    "pages": 8
+  }
+}
+```
+
+---
+
+#### 4.2.4 Create Inventory Record
+
+**Endpoint:** `POST /api/inventory`
+
+**Request Body:**
+
+```json
+{
+  "sku": "SKU-12345",
+  "product_id": "prod-abc-123",
+  "quantity_available": 100,
+  "reorder_level": 10,
+  "max_stock": 500,
+  "cost_per_unit": 25.99
+}
+```
+
+| Field                | Type    | Required | Description                |
+| -------------------- | ------- | -------- | -------------------------- |
+| `sku`                | string  | Yes      | Unique product SKU         |
+| `product_id`         | string  | No       | Product service identifier |
+| `quantity_available` | integer | Yes      | Initial stock quantity     |
+| `reorder_level`      | integer | No       | Low stock threshold        |
+| `max_stock`          | integer | No       | Maximum stock level        |
+| `cost_per_unit`      | decimal | No       | Unit cost for valuation    |
+
+**Response (201 Created):**
+
+```json
+{
+  "id": 1,
+  "sku": "SKU-12345",
+  "product_id": "prod-abc-123",
+  "quantity_available": 100,
+  "quantity_reserved": 0,
+  "reorder_level": 10,
+  "max_stock": 500,
+  "cost_per_unit": 25.99,
+  "created_at": "2025-01-20T15:00:00Z",
+  "updated_at": "2025-01-20T15:00:00Z"
+}
+```
+
+**Error Responses:**
+
+| Status | Code                 | Description          |
+| ------ | -------------------- | -------------------- |
+| 400    | `VALIDATION_ERROR`   | Invalid request data |
+| 409    | `SKU_ALREADY_EXISTS` | Duplicate SKU        |
+
+---
+
+#### 4.2.5 Update Inventory Quantity
+
+**Endpoint:** `PUT /api/inventory/{sku}`
+
+**Path Parameters:**
+
+| Parameter | Type   | Required | Description |
+| --------- | ------ | -------- | ----------- |
+| `sku`     | string | Yes      | Product SKU |
+
+**Request Body:**
+
+```json
+{
+  "quantity_available": 150,
+  "reorder_level": 20,
+  "max_stock": 600,
+  "cost_per_unit": 24.99
+}
+```
+
+**Response (200 OK):** Returns updated inventory record.
+
+**Error Responses:**
+
+| Status | Code            | Description          |
+| ------ | --------------- | -------------------- |
+| 404    | `SKU_NOT_FOUND` | SKU not in inventory |
+
+---
+
+#### 4.2.6 Delete Inventory Record
+
+**Endpoint:** `DELETE /api/inventory/{sku}`
+
+**Response (204 No Content):** Empty body on success.
+
+**Error Responses:**
+
+| Status | Code                        | Description                            |
+| ------ | --------------------------- | -------------------------------------- |
+| 404    | `SKU_NOT_FOUND`             | SKU not in inventory                   |
+| 409    | `ACTIVE_RESERVATIONS_EXIST` | Cannot delete with active reservations |
+
+---
+
+#### 4.2.7 Create Reservation
+
+**Endpoint:** `POST /api/inventory/reservations`
+
+**Request Body:**
+
+```json
+{
+  "order_id": "ord-abc-123",
+  "sku": "SKU-12345",
+  "quantity": 2
+}
+```
+
+| Field      | Type    | Required | Description                |
+| ---------- | ------- | -------- | -------------------------- |
+| `order_id` | string  | Yes      | Order identifier           |
+| `sku`      | string  | Yes      | Product SKU                |
+| `quantity` | integer | Yes      | Quantity to reserve (>= 1) |
+
+**Response (201 Created):**
+
+```json
+{
+  "id": 1,
+  "order_id": "ord-abc-123",
+  "sku": "SKU-12345",
+  "quantity": 2,
+  "status": "PENDING",
+  "expires_at": "2025-01-20T16:00:00Z",
+  "created_at": "2025-01-20T15:00:00Z"
+}
+```
+
+**Error Responses:**
+
+| Status | Code                 | Description                   |
+| ------ | -------------------- | ----------------------------- |
+| 404    | `SKU_NOT_FOUND`      | SKU not in inventory          |
+| 409    | `INSUFFICIENT_STOCK` | Requested qty > available qty |
+
+---
+
+#### 4.2.8 Confirm Reservation
+
+**Endpoint:** `POST /api/inventory/reservations/{id}/confirm`
+
+**Path Parameters:**
+
+| Parameter | Type    | Required | Description    |
+| --------- | ------- | -------- | -------------- |
+| `id`      | integer | Yes      | Reservation ID |
+
+**Response (200 OK):**
+
+```json
+{
+  "id": 1,
+  "order_id": "ord-abc-123",
+  "sku": "SKU-12345",
+  "quantity": 2,
+  "status": "CONFIRMED",
+  "confirmed_at": "2025-01-20T15:30:00Z"
+}
+```
+
+**Error Responses:**
+
+| Status | Code                        | Description                      |
+| ------ | --------------------------- | -------------------------------- |
+| 404    | `RESERVATION_NOT_FOUND`     | Reservation ID not found         |
+| 409    | `INVALID_STATUS_TRANSITION` | Reservation not in PENDING state |
+
+---
+
+#### 4.2.9 Release Reservation
+
+**Endpoint:** `POST /api/inventory/reservations/{id}/release`
+
+**Response (200 OK):**
+
+```json
+{
+  "id": 1,
+  "order_id": "ord-abc-123",
+  "sku": "SKU-12345",
+  "quantity": 2,
+  "status": "RELEASED",
+  "released_at": "2025-01-20T15:45:00Z"
+}
+```
+
+**Error Responses:**
+
+| Status | Code                        | Description                          |
+| ------ | --------------------------- | ------------------------------------ |
+| 404    | `RESERVATION_NOT_FOUND`     | Reservation ID not found             |
+| 409    | `INVALID_STATUS_TRANSITION` | Cannot release CONFIRMED reservation |
+
+---
 
 ### 4.3 Error Response Format
+
+All API errors return a consistent JSON structure:
 
 ```json
 {
   "error": {
     "code": "ERROR_CODE",
-    "message": "Human-readable message",
-    "details": {}
-  }
+    "message": "Human-readable error description",
+    "details": {
+      "field": "sku",
+      "reason": "SKU not found in inventory"
+    }
+  },
+  "correlation_id": "req-abc-123-def-456",
+  "timestamp": "2025-01-20T15:00:00Z"
 }
 ```
+
+### 4.4 Error Code Reference
+
+| Code                        | HTTP Status | Description                                |
+| --------------------------- | ----------- | ------------------------------------------ |
+| `VALIDATION_ERROR`          | 400         | Request validation failed                  |
+| `UNAUTHORIZED`              | 401         | Missing or invalid authentication          |
+| `FORBIDDEN`                 | 403         | Insufficient permissions                   |
+| `SKU_NOT_FOUND`             | 404         | SKU does not exist in inventory            |
+| `RESERVATION_NOT_FOUND`     | 404         | Reservation ID does not exist              |
+| `SKU_ALREADY_EXISTS`        | 409         | Duplicate SKU on create                    |
+| `INSUFFICIENT_STOCK`        | 409         | Not enough stock for reservation           |
+| `INVALID_STATUS_TRANSITION` | 409         | Invalid reservation status change          |
+| `ACTIVE_RESERVATIONS_EXIST` | 409         | Cannot delete SKU with active reservations |
+| `INTERNAL_ERROR`            | 500         | Unexpected server error                    |
+
+### 4.5 Authentication
+
+**Service-to-Service Authentication:**
+
+- Used by: Product Service, Order Service
+- Header: `Authorization: Bearer <service-token>`
+- Token validation: JWT with service identifier claim
+
+**Admin Authentication:**
+
+- Used by: Admin UI for inventory management
+- Header: `Authorization: Bearer <admin-jwt>`
+- Required claim: `role: admin`
+
+**Health Endpoints:**
+
+- No authentication required
+- Used by: Load balancers, Kubernetes probes
 
 ---
 
