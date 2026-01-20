@@ -14,20 +14,34 @@
 
 ## 1. Overview
 
-### 1.1 Service Summary
+### 1.1 Purpose
 
-| Attribute      | Value                                            |
-| -------------- | ------------------------------------------------ |
-| Service Name   | inventory-service                                |
-| Tech Stack     | <!-- TODO: Node.js/Express or Python/FastAPI --> |
-| Database       | PostgreSQL                                       |
-| Cache          | Redis                                            |
-| Messaging      | Dapr Pub/Sub (abstracted)                        |
-| Main Port      | 8004                                             |
-| Dapr HTTP Port | 3504                                             |
-| Dapr gRPC Port | 50004                                            |
+The Inventory Service is a core microservice within the xshopai e-commerce platform responsible for managing stock levels, reservations, and product availability across all warehouses. It serves as the **single source of truth** for product availability data and provides both synchronous APIs and event-driven integration patterns for real-time inventory updates.
 
-### 1.2 References
+### 1.2 Service Summary
+
+| Attribute      | Value                                       |
+| -------------- | ------------------------------------------- |
+| Service Name   | inventory-service                           |
+| Tech Stack     | Python 3.x / Flask 3.0 / Flask-RESTX        |
+| Database       | MySQL 8.x (SQLAlchemy ORM + PyMySQL driver) |
+| Migrations     | Flask-Migrate (Alembic)                     |
+| Cache          | None (Redis integration removed)            |
+| API Docs       | Swagger/OpenAPI via Flask-RESTX             |
+| Messaging      | Dapr Pub/Sub (abstracted via DaprProvider)  |
+| Main Port      | 8004                                        |
+| Dapr HTTP Port | 3504                                        |
+| Dapr gRPC Port | 50004                                       |
+
+### 1.3 Key Responsibilities
+
+1. **Stock Management** - Track real-time stock levels by SKU and warehouse; handle stock adjustments (received, damaged, returned)
+2. **Reservation System** - Create time-bound reservations during checkout; auto-expire uncommitted reservations; confirm reservations on order placement
+3. **Event Publishing** - Publish `inventory.stock.updated`, `inventory.reserved`, `inventory.released` events for downstream services
+4. **Stock Queries** - Provide availability checks for Product Service (denormalized status) and Order Service (validation)
+5. **Admin Operations** - Bulk stock updates, low-stock threshold configuration, inventory auditing
+
+### 1.4 References
 
 | Document             | Link                                                                  |
 | -------------------- | --------------------------------------------------------------------- |
