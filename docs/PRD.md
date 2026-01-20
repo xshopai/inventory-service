@@ -7,10 +7,7 @@
 3. [User Stories](#3-user-stories)
 4. [Functional Requirements](#4-functional-requirements)
 5. [Traceability Matrix](#5-traceability-matrix)
-6. [API Specifications](#6-api-specifications)
-7. [Data Model](#7-data-model)
-8. [Events](#8-events)
-9. [Non-Functional Requirements](#9-non-functional-requirements)
+6. [Non-Functional Requirements](#6-non-functional-requirements)
 
 ---
 
@@ -441,15 +438,15 @@ The system shall provide an API to create a new inventory record with SKU and in
 ### 4.14 Get Inventory Record by SKU
 
 **Description:**  
-The system shall provide an API to retrieve a single inventory record by SKU.
+The system shall provide an API to retrieve a single inventory record by SKU with full details.
 
 **Functional Details:**
 
 | Aspect   | Specification                                |
 | -------- | -------------------------------------------- |
-| Endpoint | `GET /api/inventory/{sku}`                   |
+| Endpoint | `GET /api/admin/inventory/{sku}`             |
 | Output   | Full inventory record including reserved qty |
-| Auth     | Admin authentication for full details        |
+| Auth     | Admin authentication required                |
 
 **Acceptance Criteria:**
 
@@ -555,11 +552,11 @@ The system shall publish `inventory.stock.updated` event after admin create, upd
 
 > **Purpose:** This matrix provides a single snapshot view linking User Stories to their implementing requirements. Use this to verify coverage and track implementation status.
 
-| User Story                             | Story Title                 | Requirements                                                                                                                                                                                                                                                                                                   |
-| -------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [3.1](#31-query-stock-availability)    | Query Stock Availability    | [4.1](#41-query-stock-for-single-sku), [4.2](#42-query-stock-for-multiple-skus), [4.3](#43-handle-unknown-sku), [4.4](#44-support-pagination-for-bulk-queries)                                                                                                                                                 |
-| [3.2](#32-reserve-inventory-for-order) | Reserve Inventory for Order | [4.5](#45-create-reservation), [4.6](#46-prevent-over-reservation), [4.7](#47-confirm-reservation), [4.8](#48-release-reservation), [4.9](#49-handle-reservation-expiration), [4.10](#410-partial-reservation-handling), [4.11](#411-publish-reservation-events)                                               |
-| [3.3](#33-manage-inventory-records)    | Manage Inventory Records    | [4.12](#412-list-all-inventory-records), [4.13](#413-create-inventory-record), [4.14](#414-get-inventory-record-by-sku), [4.15](#415-update-inventory-record), [4.16](#416-delete-inventory-record), [4.17](#417-prevent-duplicate-sku-creation), [4.18](#418-publish-stock-updated-event-on-admin-operations) |
+| User Story                             | Story Title                 | Requirements                                                                                                                                                                                                                                                                                                 |
+| -------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [3.1](#31-query-stock-availability)    | Query Stock Availability    | [4.1](#41-query-stock-for-single-sku), [4.2](#42-query-stock-for-multiple-skus), [4.3](#43-handle-unknown-sku-in-query), [4.4](#44-filter-in-stock-items)                                                                                                                                                    |
+| [3.2](#32-reserve-inventory-for-order) | Reserve Inventory for Order | [4.5](#45-create-inventory-reservation), [4.6](#46-decrement-stock-on-reservation), [4.7](#47-reject-insufficient-stock-reservation), [4.8](#48-confirm-reservation), [4.9](#49-release-reservation), [4.10](#410-associate-reservation-with-order), [4.11](#411-publish-stock-updated-event-on-reservation) |
+| [3.3](#33-manage-inventory-records)    | Manage Inventory Records    | [4.12](#412-list-inventory-records), [4.13](#413-create-inventory-record), [4.14](#414-get-inventory-record-by-sku), [4.15](#415-update-inventory-quantity), [4.16](#416-delete-inventory-record), [4.17](#417-prevent-duplicate-sku-creation), [4.18](#418-publish-stock-updated-event-on-admin-operations) |
 
 **Coverage Summary:**
 
@@ -570,33 +567,37 @@ The system shall publish `inventory.stock.updated` event after admin create, upd
 
 ---
 
-## 6. API Specifications
+## 6. Non-Functional Requirements
 
-_Section to be expanded_
+### 6.1 Performance
+
+| Metric                  | Target    | Description                              |
+| ----------------------- | --------- | ---------------------------------------- |
+| API Response Time (p95) | < 100ms   | Stock queries and reservation operations |
+| Throughput              | 500 req/s | Sustained load during normal operations  |
+
+### 6.2 Reliability
+
+| Metric                   | Target  | Description                               |
+| ------------------------ | ------- | ----------------------------------------- |
+| Service Availability     | 99.9%   | Uptime during business hours              |
+| Reservation Success Rate | > 99.5% | Valid requests that complete successfully |
+| Oversell Rate            | < 0.1%  | Orders exceeding available stock          |
+
+### 6.3 Security
+
+| Requirement                                 | Priority |
+| ------------------------------------------- | -------- |
+| Admin endpoints require JWT with admin role | Critical |
+| Input validation on all endpoints           | Critical |
+| No sensitive data in logs                   | High     |
+
+### 6.4 Observability
+
+| Requirement                                         | Priority |
+| --------------------------------------------------- | -------- |
+| Health check endpoints (`/health`, `/health/ready`) | Critical |
+| Structured JSON logging with correlation IDs        | High     |
+| Log stock changes with before/after values          | High     |
 
 ---
-
-## 7. Data Model
-
-_Section to be expanded_
-
----
-
-## 8. Events
-
-_Section to be expanded_
-
----
-
-## 9. Non-Functional Requirements
-
-_Section to be expanded_
-
----
-
-## Revision History
-
-| Version | Date             | Author        | Changes                               |
-| ------- | ---------------- | ------------- | ------------------------------------- |
-| 2.0     | January 20, 2026 | Platform Team | Simplified PRD for MVP implementation |
-| 1.0     | -                | Platform Team | Initial comprehensive PRD             |
