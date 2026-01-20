@@ -1,437 +1,233 @@
-# Architecture Document
-
-## Inventory Service - xshopai Platform
-
-**Version:** 1.0  
-**Last Updated:** January 19, 2026  
-**Status:** Draft  
-**Owner:** xshopai Platform Team
-
----
+# Inventory Service - Architecture Document
 
 ## Table of Contents
 
 1. [Overview](#1-overview)
-2. [Architecture Principles](#2-architecture-principles)
-3. [System Context](#3-system-context)
-4. [Component Architecture](#4-component-architecture)
-5. [Data Architecture](#5-data-architecture)
-6. [API Design](#6-api-design)
-7. [Event-Driven Architecture](#7-event-driven-architecture)
-8. [Infrastructure & Deployment](#8-infrastructure--deployment)
-9. [Security Architecture](#9-security-architecture)
-10. [Observability](#10-observability)
-11. [Scalability & Performance](#11-scalability--performance)
-12. [Disaster Recovery](#12-disaster-recovery)
-13. [Decision Log](#13-decision-log)
+2. [System Context](#2-system-context)
+3. [Data Architecture](#3-data-architecture)
+4. [API Design](#4-api-design)
+5. [Event Architecture](#5-event-architecture)
+6. [Configuration & Deployment](#6-configuration--deployment)
+7. [Security](#7-security)
 
 ---
 
 ## 1. Overview
 
-### 1.1 Purpose
-<!-- Brief description of what this document covers -->
+### 1.1 Service Summary
 
-### 1.2 Scope
-<!-- What is in scope and out of scope for this architecture -->
+| Attribute      | Value                                            |
+| -------------- | ------------------------------------------------ |
+| Service Name   | inventory-service                                |
+| Tech Stack     | <!-- TODO: Node.js/Express or Python/FastAPI --> |
+| Database       | PostgreSQL                                       |
+| Cache          | Redis                                            |
+| Messaging      | Dapr Pub/Sub (abstracted)                        |
+| Main Port      | 8004                                             |
+| Dapr HTTP Port | 3504                                             |
+| Dapr gRPC Port | 50004                                            |
 
-### 1.3 Service Summary
+### 1.2 References
 
-| Attribute | Value |
-|-----------|-------|
-| Service Name | <!-- name --> |
-| Tech Stack | <!-- language/framework --> |
-| Database | <!-- database type --> |
-| Cache | <!-- cache type --> |
-| Messaging | <!-- messaging system --> |
-| Main Port | <!-- port --> |
-| Dapr HTTP Port | <!-- port --> |
-| Dapr gRPC Port | <!-- port --> |
-
-### 1.4 References
-<!-- Links to related documents: PRD, API specs, etc. -->
+| Document             | Link                                                                  |
+| -------------------- | --------------------------------------------------------------------- |
+| PRD                  | [docs/PRD.md](./PRD.md)                                               |
+| Copilot Instructions | [.github/copilot-instructions.md](../.github/copilot-instructions.md) |
 
 ---
 
-## 2. Architecture Principles
+## 2. System Context
 
-### 2.1 Guiding Principles
+### 2.1 Context Diagram
 
-| Principle | Description |
-|-----------|-------------|
-| <!-- principle name --> | <!-- description --> |
-| <!-- principle name --> | <!-- description --> |
-| <!-- principle name --> | <!-- description --> |
+<!-- TODO: Add Mermaid diagram showing inventory-service with external systems -->
 
-### 2.2 Design Constraints
-<!-- Technical or business constraints that influence the architecture -->
+### 2.2 External Interfaces
 
-### 2.3 Assumptions
-<!-- Key assumptions made in the design -->
+| System        | Direction            | Protocol                  | Description          |
+| ------------- | -------------------- | ------------------------- | -------------------- |
+| <!-- TODO --> | <!-- in/out/both --> | <!-- HTTP/gRPC/Events --> | <!-- description --> |
 
----
+### 2.3 Dependencies
 
-## 3. System Context
+#### 2.3.1 Upstream Dependencies
 
-### 3.1 Context Diagram
+<!-- TODO: Services this service depends on -->
 
-```
-<!-- ASCII/Mermaid diagram showing the service in context with external systems -->
-```
+#### 2.3.2 Downstream Consumers
 
-### 3.2 External Interfaces
-
-| System | Direction | Protocol | Description |
-|--------|-----------|----------|-------------|
-| <!-- system --> | <!-- in/out/both --> | <!-- protocol --> | <!-- description --> |
-
-### 3.3 Dependencies
-
-#### 3.3.1 Upstream Dependencies
-<!-- Services/systems this service depends on -->
-
-#### 3.3.2 Downstream Consumers
-<!-- Services/systems that depend on this service -->
+<!-- TODO: Services that consume from this service -->
 
 ---
 
-## 4. Component Architecture
+## 3. Data Architecture
 
-### 4.1 High-Level Architecture Diagram
+### 3.1 Database Schema
 
-```
-<!-- ASCII/Mermaid diagram showing internal components -->
-```
+#### 3.1.1 inventory Table
 
-### 4.2 Component Descriptions
+| Column        | Type          | Constraints          | Description          |
+| ------------- | ------------- | -------------------- | -------------------- |
+| <!-- TODO --> | <!-- type --> | <!-- constraints --> | <!-- description --> |
 
-| Component | Responsibility | Technology |
-|-----------|---------------|------------|
-| <!-- component --> | <!-- responsibility --> | <!-- tech --> |
+#### 3.1.2 reservations Table
 
-### 4.3 Layer Structure
+| Column        | Type          | Constraints          | Description          |
+| ------------- | ------------- | -------------------- | -------------------- |
+| <!-- TODO --> | <!-- type --> | <!-- constraints --> | <!-- description --> |
 
-#### 4.3.1 API Layer
-<!-- Description of controllers/routes -->
+### 3.2 Indexes
 
-#### 4.3.2 Service Layer
-<!-- Description of business logic layer -->
+| Table         | Index Name    | Columns          | Type                | Purpose          |
+| ------------- | ------------- | ---------------- | ------------------- | ---------------- |
+| <!-- TODO --> | <!-- name --> | <!-- columns --> | <!-- B-tree/etc --> | <!-- purpose --> |
 
-#### 4.3.3 Repository Layer
-<!-- Description of data access layer -->
+### 3.3 Caching Strategy
 
-#### 4.3.4 Infrastructure Layer
-<!-- Description of cross-cutting concerns -->
-
-### 4.4 Directory Structure
-
-```
-<!-- Project folder structure -->
-```
+| Data Type     | Cache Key Pattern | TTL               | Invalidation      |
+| ------------- | ----------------- | ----------------- | ----------------- |
+| <!-- TODO --> | <!-- pattern -->  | <!-- duration --> | <!-- strategy --> |
 
 ---
 
-## 5. Data Architecture
+## 4. API Design
 
-### 5.1 Data Model Overview
+### 4.1 Endpoint Summary
 
-```
-<!-- ER diagram or schema diagram -->
-```
+| Method                                   | Endpoint | Description | Auth |
+| ---------------------------------------- | -------- | ----------- | ---- |
+| <!-- TODO: All 18 endpoints from PRD --> |          |             |      |
 
-### 5.2 Entity Definitions
+### 4.2 Request/Response Specifications
 
-#### 5.2.1 <!-- Entity Name -->
+<!-- TODO: Detailed specs for each endpoint -->
 
-| Field | Type | Constraints | Description |
-|-------|------|-------------|-------------|
-| <!-- field --> | <!-- type --> | <!-- constraints --> | <!-- description --> |
+### 4.3 Error Response Format
 
-### 5.3 Indexes
-
-| Table | Index Name | Columns | Type | Purpose |
-|-------|------------|---------|------|---------|
-| <!-- table --> | <!-- name --> | <!-- columns --> | <!-- type --> | <!-- purpose --> |
-
-### 5.4 Data Migration Strategy
-<!-- How schema changes will be handled -->
-
-### 5.5 Caching Strategy
-
-#### 5.5.1 Cache Topology
-<!-- What caching approach: local, distributed, multi-level -->
-
-#### 5.5.2 Cache Policies
-
-| Data Type | TTL | Invalidation Strategy |
-|-----------|-----|----------------------|
-| <!-- type --> | <!-- duration --> | <!-- strategy --> |
-
----
-
-## 6. API Design
-
-### 6.1 API Overview
-
-| Category | Base Path | Description |
-|----------|-----------|-------------|
-| <!-- category --> | <!-- path --> | <!-- description --> |
-
-### 6.2 Endpoint Summary
-
-| Method | Endpoint | Description | Auth |
-|--------|----------|-------------|------|
-| <!-- method --> | <!-- path --> | <!-- description --> | <!-- auth type --> |
-
-### 6.3 Request/Response Patterns
-
-#### 6.3.1 Standard Response Format
 ```json
 {
-  // Response structure
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable message",
+    "details": {}
+  }
 }
 ```
 
-#### 6.3.2 Error Response Format
+---
+
+## 5. Event Architecture
+
+### 5.1 Published Events
+
+| Event Type              | Topic            | Trigger            | Payload       |
+| ----------------------- | ---------------- | ------------------ | ------------- |
+| inventory.stock.updated | inventory-events | Stock level change | <!-- TODO --> |
+
+### 5.2 Event Schema
+
+#### 5.2.1 inventory.stock.updated
+
 ```json
 {
-  // Error structure
+  // TODO: Event payload structure
 }
 ```
 
-### 6.4 API Versioning Strategy
-<!-- How API versions will be managed -->
+### 5.3 Messaging Abstraction Layer
 
-### 6.5 Rate Limiting
-<!-- Rate limiting approach and thresholds -->
-
----
-
-## 7. Event-Driven Architecture
-
-### 7.1 Event Overview
+The service uses a messaging abstraction layer to support multiple deployment targets.
 
 ```
-<!-- Diagram showing event flows -->
+┌─────────────────────────────────────────────────────────────┐
+│                    inventory-service                         │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+┌─────────────────────────▼───────────────────────────────────┐
+│              Messaging Abstraction Layer                     │
+│                   (MessagePublisher)                         │
+└───────┬─────────────────┬─────────────────┬─────────────────┘
+        │                 │                 │
+┌───────▼───────┐ ┌───────▼───────┐ ┌───────▼───────┐
+│ DaprProvider  │ │ ServiceBus    │ │ RabbitMQ      │
+│               │ │ Provider      │ │ Provider      │
+└───────┬───────┘ └───────┬───────┘ └───────┬───────┘
+        │                 │                 │
+   Dapr Sidecar      Direct SDK        Direct SDK
+        │                 │                 │
+┌───────▼───────┐ ┌───────▼───────┐ ┌───────▼───────┐
+│  RabbitMQ /   │ │ Azure Service │ │   RabbitMQ    │
+│  Service Bus  │ │     Bus       │ │               │
+└───────────────┘ └───────────────┘ └───────────────┘
 ```
 
-### 7.2 Published Events
+### 5.4 Provider Interface
 
-| Event Type | Topic | Trigger | Payload Summary |
-|------------|-------|---------|-----------------|
-| <!-- event --> | <!-- topic --> | <!-- trigger --> | <!-- summary --> |
-
-### 7.3 Consumed Events
-
-| Event Type | Source | Handler | Action |
-|------------|--------|---------|--------|
-| <!-- event --> | <!-- source --> | <!-- handler --> | <!-- action --> |
-
-### 7.4 Event Schemas
-
-#### 7.4.1 <!-- Event Name -->
-```json
-{
-  // Event payload structure
-}
-```
-
-### 7.5 Idempotency Strategy
-<!-- How duplicate events are handled -->
-
-### 7.6 Dead Letter Queue Handling
-<!-- DLQ configuration and retry strategy -->
+<!-- TODO: Define the MessagePublisher interface -->
 
 ---
 
-## 8. Infrastructure & Deployment
+## 6. Configuration & Deployment
 
-### 8.1 Deployment Diagram
+### 6.1 Environment Variables
 
-```
-<!-- Deployment topology diagram -->
-```
+| Variable                                 | Description                                | Required | Default |
+| ---------------------------------------- | ------------------------------------------ | -------- | ------- |
+| `PORT`                                   | Service port                               | No       | 8004    |
+| `DATABASE_URL`                           | PostgreSQL connection string               | Yes      | -       |
+| `REDIS_URL`                              | Redis connection string                    | Yes      | -       |
+| `MESSAGING_PROVIDER`                     | Provider: `dapr`, `servicebus`, `rabbitmq` | No       | `dapr`  |
+| <!-- TODO: Add all required env vars --> |                                            |          |         |
 
-### 8.2 Container Configuration
+### 6.2 Messaging Provider Configuration
 
-| Setting | Value | Description |
-|---------|-------|-------------|
-| Base Image | <!-- image --> | <!-- description --> |
-| Resources | <!-- cpu/memory --> | <!-- description --> |
-| Replicas | <!-- count --> | <!-- description --> |
+#### 6.2.1 Dapr Provider (Default - Local Development)
 
-### 8.3 Environment Configuration
+| Variable           | Description            | Required           |
+| ------------------ | ---------------------- | ------------------ |
+| `DAPR_HTTP_PORT`   | Dapr sidecar HTTP port | No (default: 3504) |
+| `DAPR_PUBSUB_NAME` | Pub/sub component name | Yes                |
 
-| Environment | Purpose | Key Differences |
-|-------------|---------|-----------------|
-| <!-- env --> | <!-- purpose --> | <!-- differences --> |
+#### 6.2.2 Service Bus Provider (Azure)
 
-### 8.4 Configuration Management
+| Variable                       | Description                  | Required |
+| ------------------------------ | ---------------------------- | -------- |
+| `SERVICEBUS_CONNECTION_STRING` | Azure Service Bus connection | Yes      |
+| `SERVICEBUS_TOPIC_NAME`        | Topic name                   | Yes      |
 
-#### 8.4.1 Environment Variables
+#### 6.2.3 RabbitMQ Provider (Direct)
 
-| Variable | Description | Required | Default |
-|----------|-------------|----------|---------|
-| <!-- var --> | <!-- description --> | <!-- yes/no --> | <!-- default --> |
+| Variable            | Description                | Required |
+| ------------------- | -------------------------- | -------- |
+| `RABBITMQ_URL`      | RabbitMQ connection string | Yes      |
+| `RABBITMQ_EXCHANGE` | Exchange name              | Yes      |
 
-#### 8.4.2 Secrets Management
-<!-- How secrets are stored and accessed -->
+### 6.3 Deployment Targets
 
-### 8.5 CI/CD Pipeline
-<!-- Build, test, deploy stages -->
-
----
-
-## 9. Security Architecture
-
-### 9.1 Authentication
-<!-- How requests are authenticated -->
-
-### 9.2 Authorization
-
-| Role | Permissions |
-|------|-------------|
-| <!-- role --> | <!-- permissions --> |
-
-### 9.3 Data Protection
-
-#### 9.3.1 Data at Rest
-<!-- Encryption approach for stored data -->
-
-#### 9.3.2 Data in Transit
-<!-- TLS/mTLS configuration -->
-
-### 9.4 Input Validation
-<!-- Validation approach and sanitization -->
-
-### 9.5 Security Headers
-<!-- HTTP security headers applied -->
+| Target                 | Messaging Provider | Notes                           |
+| ---------------------- | ------------------ | ------------------------------- |
+| Local (Docker Compose) | `dapr`             | Uses Dapr sidecar with RabbitMQ |
+| Azure App Service      | `servicebus`       | Direct SDK, no sidecar          |
+| Azure Container Apps   | `dapr`             | Managed Dapr integration        |
+| AKS                    | `dapr`             | Self-managed Dapr               |
 
 ---
 
-## 10. Observability
+## 7. Security
 
-### 10.1 Logging
+### 7.1 Authentication
 
-#### 10.1.1 Log Levels
-| Level | Usage |
-|-------|-------|
-| <!-- level --> | <!-- when to use --> |
+<!-- TODO: JWT validation approach -->
 
-#### 10.1.2 Structured Log Format
-```json
-{
-  // Log structure
-}
-```
+### 7.2 Authorization Matrix
 
-### 10.2 Metrics
+| Endpoint Pattern           | Required Role    | Notes               |
+| -------------------------- | ---------------- | ------------------- |
+| `GET /api/inventory/*`     | Public / Service | Stock queries       |
+| `POST /api/inventory/*`    | Admin            | Stock modifications |
+| `POST /api/reservations/*` | Service          | Internal only       |
+| `GET /api/admin/*`         | Admin            | Admin operations    |
 
-| Metric | Type | Description |
-|--------|------|-------------|
-| <!-- metric --> | <!-- counter/gauge/histogram --> | <!-- description --> |
+### 7.3 Service-to-Service Authentication
 
-### 10.3 Tracing
-<!-- Distributed tracing approach -->
-
-### 10.4 Health Checks
-
-| Endpoint | Type | Checks |
-|----------|------|--------|
-| <!-- endpoint --> | <!-- liveness/readiness --> | <!-- what it checks --> |
-
-### 10.5 Alerting Rules
-
-| Alert | Condition | Severity | Action |
-|-------|-----------|----------|--------|
-| <!-- alert --> | <!-- condition --> | <!-- severity --> | <!-- action --> |
-
----
-
-## 11. Scalability & Performance
-
-### 11.1 Performance Targets
-
-| Metric | Target |
-|--------|--------|
-| <!-- metric --> | <!-- target --> |
-
-### 11.2 Scaling Strategy
-
-#### 11.2.1 Horizontal Scaling
-<!-- Pod/instance scaling triggers -->
-
-#### 11.2.2 Database Scaling
-<!-- Read replicas, sharding strategy -->
-
-### 11.3 Performance Optimizations
-<!-- Key optimizations implemented -->
-
-### 11.4 Load Testing Results
-<!-- Summary of load testing -->
-
----
-
-## 12. Disaster Recovery
-
-### 12.1 Backup Strategy
-
-| Data | Frequency | Retention | Location |
-|------|-----------|-----------|----------|
-| <!-- data --> | <!-- frequency --> | <!-- retention --> | <!-- location --> |
-
-### 12.2 Recovery Procedures
-
-| Scenario | RTO | RPO | Procedure Reference |
-|----------|-----|-----|---------------------|
-| <!-- scenario --> | <!-- time --> | <!-- time --> | <!-- link --> |
-
-### 12.3 Failover Strategy
-<!-- How failover is handled -->
-
----
-
-## 13. Decision Log
-
-### ADR Template
-
-Each Architecture Decision Record should follow this format:
-
-| Field | Description |
-|-------|-------------|
-| ID | <!-- ADR-XXX --> |
-| Title | <!-- Decision title --> |
-| Status | <!-- Proposed/Accepted/Deprecated/Superseded --> |
-| Context | <!-- Why is this decision needed --> |
-| Decision | <!-- What was decided --> |
-| Consequences | <!-- Positive and negative impacts --> |
-| Date | <!-- When decided --> |
-
-### Decision Records
-
-#### ADR-001: <!-- Title -->
-<!-- Use template above -->
-
----
-
-## Appendix
-
-### A. Glossary
-
-| Term | Definition |
-|------|------------|
-| <!-- term --> | <!-- definition --> |
-
-### B. Related Documents
-
-| Document | Link |
-|----------|------|
-| PRD | <!-- link --> |
-| API Specification | <!-- link --> |
-| Runbook | <!-- link --> |
-
-### C. Revision History
-
-| Version | Date | Author | Changes |
-|---------|------|--------|---------|
-| <!-- version --> | <!-- date --> | <!-- author --> | <!-- changes --> |
+<!-- TODO: How services authenticate with inventory-service -->
