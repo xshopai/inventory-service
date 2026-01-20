@@ -143,31 +143,177 @@ C4Context
 
 ## 3. Data Architecture
 
-### 3.1 Database Schema
+### 3.1 Entity Relationship Diagram
 
-#### 3.1.1 inventory Table
+```mermaid
+erDiagram
+    inventory_items ||--o{ reservations : "has"
+    inventory_items ||--o{ stock_movements : "tracks"
 
-| Column        | Type          | Constraints          | Description          |
-| ------------- | ------------- | -------------------- | -------------------- |
-| <!-- TODO --> | <!-- type --> | <!-- constraints --> | <!-- description --> |
+    inventory_items {
+        int id PK
+        string sku UK "Unique product identifier"
+        string product_id "Reference to product service"
+        int quantity_available "Current available stock"
+        int quantity_reserved "Reserved for orders"
+        int reorder_level "Low stock threshold"
+        int max_stock "Maximum stock capacity"
+        decimal cost_per_unit "Unit cost for valuation"
+        datetime last_restocked "Last restock timestamp"
+        datetime created_at
+        datetime updated_at
+    }
 
-#### 3.1.2 reservations Table
+    reservations {
+        int id PK
+        string order_id UK "Unique order reference"
+        string sku FK "References inventory_items"
+        int quantity "Reserved quantity"
+        enum status "PENDING|CONFIRMED|COMPLETED|CANCELLED|EXPIRED|RELEASED"
+        datetime expires_at "Reservation expiry time"
+        datetime created_at
+        datetime updated_at
+    }
 
-| Column        | Type          | Constraints          | Description          |
-| ------------- | ------------- | -------------------- | -------------------- |
-| <!-- TODO --> | <!-- type --> | <!-- constraints --> | <!-- description --> |
+    stock_movements {
+        int id PK
+        string sku FK "References inventory_items"
+        enum movement_type "INBOUND|OUTBOUND|ADJUSTMENT|RESERVED|RELEASED|DAMAGED|RETURNED"
+        int quantity "Movement quantity (positive/negative)"
+        string reference "Order ID or adjustment reference"
+        string reason "Movement reason/notes"
+        string created_by "User or system identifier"
+        datetime created_at
+    }
+```
 
-### 3.2 Indexes
+### 3.2 Database Schema
 
-| Table         | Index Name    | Columns          | Type                | Purpose          |
-| ------------- | ------------- | ---------------- | ------------------- | ---------------- |
-| <!-- TODO --> | <!-- name --> | <!-- columns --> | <!-- B-tree/etc --> | <!-- purpose --> |
+#### 3.2.1 inventory_items Table
 
-### 3.3 Caching Strategy
+| Column               | Type          | Constraints               | Description                          |
+| -------------------- | ------------- | ------------------------- | ------------------------------------ |
+| `id`                 | INT           | PK, AUTO_INCREMENT        | Primary key                          |
+| `sku`                | VARCHAR(50)   | UNIQUE, NOT NULL, INDEX   | Stock Keeping Unit identifier        |
+| `product_id`         | VARCHAR(50)   | INDEX                     | Reference to Product Service         |
+| `quantity_available` | INT           | NOT NULL, DEFAULT 0       | Current available stock quantity     |
+| `quantity_reserved`  | INT           | NOT NULL, DEFAULT 0       | Quantity reserved for pending orders |
+| `reorder_level`      | INT           | NOT NULL, DEFAULT 10      | Threshold for low stock alerts       |
+| `max_stock`          | INT           | DEFAULT NULL              | Maximum stock capacity               |
+| `cost_per_unit`      | DECIMAL(10,2) | DEFAULT NULL              | Unit cost for inventory valuation    |
+| `last_restocked`     | DATETIME      | DEFAULT NULL              | Timestamp of last restock operation  |
+| `created_at`         | DATETIME      | NOT NULL, DEFAULT NOW()   | Record creation timestamp            |
+| `updated_at`         | DATETIME      | NOT NULL, ON UPDATE NOW() | Last modification timestamp          |
 
-| Data Type     | Cache Key Pattern | TTL               | Invalidation      |
-| ------------- | ----------------- | ----------------- | ----------------- |
-| <!-- TODO --> | <!-- pattern -->  | <!-- duration --> | <!-- strategy --> |
+#### 3.2.2 reservations Table
+
+| Column       | Type        | Constraints                 | Description                                                 |
+| ------------ | ----------- | --------------------------- | ----------------------------------------------------------- |
+| `id`         | INT         | PK, AUTO_INCREMENT          | Primary key                                                 |
+| `order_id`   | VARCHAR(50) | UNIQUE, NOT NULL, INDEX     | Order identifier from Order Service                         |
+| `sku`        | VARCHAR(50) | NOT NULL, INDEX, FK         | References inventory_items.sku                              |
+| `quantity`   | INT         | NOT NULL                    | Quantity reserved                                           |
+| `status`     | ENUM        | NOT NULL, DEFAULT 'PENDING' | PENDING, CONFIRMED, COMPLETED, CANCELLED, EXPIRED, RELEASED |
+| `expires_at` | DATETIME    | NOT NULL, INDEX             | Reservation expiration timestamp                            |
+| `created_at` | DATETIME    | NOT NULL, DEFAULT NOW()     | Record creation timestamp                                   |
+| `updated_at` | DATETIME    | NOT NULL, ON UPDATE NOW()   | Last modification timestamp                                 |
+
+**ReservationStatus Enum Values:**
+
+- `PENDING` - Reservation created, awaiting confirmation
+- `CONFIRMED` - Reservation confirmed by order service
+- `COMPLETED` - Order fulfilled, reservation closed
+- `CANCELLED` - Reservation cancelled, stock released
+- `EXPIRED` - Reservation expired (TTL exceeded)
+- `RELEASED` - Stock manually released back to available
+
+#### 3.2.3 stock_movements Table
+
+| Column          | Type         | Constraints                    | Description                          |
+| --------------- | ------------ | ------------------------------ | ------------------------------------ |
+| `id`            | INT          | PK, AUTO_INCREMENT             | Primary key                          |
+| `sku`           | VARCHAR(50)  | NOT NULL, INDEX, FK            | References inventory_items.sku       |
+| `movement_type` | ENUM         | NOT NULL, INDEX                | Type of stock movement               |
+| `quantity`      | INT          | NOT NULL                       | Movement quantity (can be negative)  |
+| `reference`     | VARCHAR(100) | INDEX                          | Order ID or adjustment reference     |
+| `reason`        | VARCHAR(255) | DEFAULT NULL                   | Reason for movement                  |
+| `created_by`    | VARCHAR(50)  | DEFAULT NULL                   | User or system that created movement |
+| `created_at`    | DATETIME     | NOT NULL, DEFAULT NOW(), INDEX | Movement timestamp                   |
+
+**StockMovementType Enum Values:**
+
+- `INBOUND` - Stock received (purchase order, transfer in)
+- `OUTBOUND` - Stock shipped (order fulfillment)
+- `ADJUSTMENT` - Manual inventory adjustment
+- `RESERVED` - Stock reserved for an order
+- `RELEASED` - Reserved stock released back
+- `DAMAGED` - Stock marked as damaged/lost
+- `RETURNED` - Customer return processed
+
+### 3.3 Indexes
+
+| Table           | Index Name                      | Columns                               | Type   | Purpose                               |
+| --------------- | ------------------------------- | ------------------------------------- | ------ | ------------------------------------- |
+| inventory_items | `PRIMARY`                       | `id`                                  | B-tree | Primary key lookup                    |
+| inventory_items | `ix_inventory_items_sku`        | `sku`                                 | B-tree | Unique SKU lookup (most common query) |
+| inventory_items | `ix_inventory_items_product_id` | `product_id`                          | B-tree | Product service queries               |
+| inventory_items | `ix_inventory_items_reorder`    | `quantity_available`, `reorder_level` | B-tree | Low stock alert queries               |
+| reservations    | `PRIMARY`                       | `id`                                  | B-tree | Primary key lookup                    |
+| reservations    | `ix_reservations_order_id`      | `order_id`                            | B-tree | Unique order lookup                   |
+| reservations    | `ix_reservations_sku`           | `sku`                                 | B-tree | SKU-based reservation queries         |
+| reservations    | `ix_reservations_status`        | `status`                              | B-tree | Status-based filtering                |
+| reservations    | `ix_reservations_expires_at`    | `expires_at`                          | B-tree | Expiration cleanup job                |
+| reservations    | `ix_reservations_sku_status`    | `sku`, `status`                       | B-tree | Composite for active reservations     |
+| stock_movements | `PRIMARY`                       | `id`                                  | B-tree | Primary key lookup                    |
+| stock_movements | `ix_stock_movements_sku`        | `sku`                                 | B-tree | Movement history by SKU               |
+| stock_movements | `ix_stock_movements_type`       | `movement_type`                       | B-tree | Movement type filtering               |
+| stock_movements | `ix_stock_movements_created_at` | `created_at`                          | B-tree | Time-based queries and auditing       |
+
+### 3.4 Caching Strategy
+
+> **Current Status:** Caching is **not implemented** in the current codebase. Redis integration was previously removed.
+
+| Aspect             | Current State           | Future Recommendation                    |
+| ------------------ | ----------------------- | ---------------------------------------- |
+| Cache Layer        | Not implemented         | Redis with Dapr State Store              |
+| Stock Levels       | Direct database queries | Cache with 30s TTL, invalidate on update |
+| Reservation Status | Direct database queries | Cache with 60s TTL                       |
+| Low Stock Alerts   | Computed on demand      | Pre-computed, event-driven invalidation  |
+
+**Database Query Optimization (Current Approach):**
+
+- Indexed queries for all frequent access patterns
+- Connection pooling via SQLAlchemy (pool_size=5, max_overflow=10)
+- Read replicas not configured (single MySQL instance)
+
+### 3.5 Database Configuration
+
+```python
+# Environment Variables
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_USER=inventory_user
+MYSQL_PASSWORD=<secret>
+MYSQL_DATABASE=inventory_db
+
+# SQLAlchemy Connection Pool Settings
+SQLALCHEMY_POOL_SIZE=5
+SQLALCHEMY_MAX_OVERFLOW=10
+SQLALCHEMY_POOL_TIMEOUT=30
+SQLALCHEMY_POOL_RECYCLE=1800
+```
+
+**Connection String Format:**
+
+```
+mysql+pymysql://{user}:{password}@{host}:{port}/{database}
+```
+
+**Migration Management:**
+
+- Tool: Flask-Migrate (Alembic)
+- Migration directory: `migrations/`
+- Commands: `flask db upgrade`, `flask db migrate`
 
 ---
 
