@@ -181,10 +181,10 @@ The system shall return an HTTP 404 error with "SKU not found" message for SKUs 
 
 **Functional Details:**
 
-| Aspect    | Specification                                              |
-| --------- | ---------------------------------------------------------- |
+| Aspect    | Specification                                                           |
+| --------- | ----------------------------------------------------------------------- |
 | Behavior  | Return HTTP 404 with `{ error: "SKU not found", sku }` for unknown SKUs |
-| Rationale | Clearly indicates SKU doesn't exist vs. being out of stock |
+| Rationale | Clearly indicates SKU doesn't exist vs. being out of stock              |
 
 **Acceptance Criteria:**
 
@@ -555,11 +555,11 @@ The system shall publish `inventory.stock.updated` event after admin create, upd
 
 > **Purpose:** This matrix provides a single snapshot view linking User Stories to their implementing requirements. Use this to verify coverage and track implementation status.
 
-| User Story | Story Title                 | Requirements                                |
-| ---------- | --------------------------- | ------------------------------------------- |
-| [3.1](#31-query-stock-availability)        | Query Stock Availability    | [4.1](#41-query-stock-for-single-sku), [4.2](#42-query-stock-for-multiple-skus), [4.3](#43-handle-unknown-sku), [4.4](#44-support-pagination-for-bulk-queries)                          |
-| [3.2](#32-reserve-inventory-for-order)        | Reserve Inventory for Order | [4.5](#45-create-reservation), [4.6](#46-prevent-over-reservation), [4.7](#47-confirm-reservation), [4.8](#48-release-reservation), [4.9](#49-handle-reservation-expiration), [4.10](#410-partial-reservation-handling), [4.11](#411-publish-reservation-events)         |
-| [3.3](#33-manage-inventory-records)        | Manage Inventory Records    | [4.12](#412-list-all-inventory-records), [4.13](#413-create-inventory-record), [4.14](#414-get-inventory-record-by-sku), [4.15](#415-update-inventory-record), [4.16](#416-delete-inventory-record), [4.17](#417-prevent-duplicate-sku-creation), [4.18](#418-publish-stock-updated-event-on-admin-operations) |
+| User Story                             | Story Title                 | Requirements                                                                                                                                                                                                                                                                                                   |
+| -------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [3.1](#31-query-stock-availability)    | Query Stock Availability    | [4.1](#41-query-stock-for-single-sku), [4.2](#42-query-stock-for-multiple-skus), [4.3](#43-handle-unknown-sku), [4.4](#44-support-pagination-for-bulk-queries)                                                                                                                                                 |
+| [3.2](#32-reserve-inventory-for-order) | Reserve Inventory for Order | [4.5](#45-create-reservation), [4.6](#46-prevent-over-reservation), [4.7](#47-confirm-reservation), [4.8](#48-release-reservation), [4.9](#49-handle-reservation-expiration), [4.10](#410-partial-reservation-handling), [4.11](#411-publish-reservation-events)                                               |
+| [3.3](#33-manage-inventory-records)    | Manage Inventory Records    | [4.12](#412-list-all-inventory-records), [4.13](#413-create-inventory-record), [4.14](#414-get-inventory-record-by-sku), [4.15](#415-update-inventory-record), [4.16](#416-delete-inventory-record), [4.17](#417-prevent-duplicate-sku-creation), [4.18](#418-publish-stock-updated-event-on-admin-operations) |
 
 **Coverage Summary:**
 
