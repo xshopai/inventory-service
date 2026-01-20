@@ -54,23 +54,90 @@ The Inventory Service is a core microservice within the xshopai e-commerce platf
 
 ### 2.1 Context Diagram
 
-<!-- TODO: Add Mermaid diagram showing inventory-service with external systems -->
+```mermaid
+C4Context
+    title System Context - Inventory Service
+
+    Person(admin, "Admin User", "Manages inventory via Admin UI")
+
+    System(inventory, "Inventory Service", "Manages stock levels, reservations, and availability")
+
+    System_Ext(product, "Product Service", "Product catalog management")
+    System_Ext(order, "Order Service", "Order processing")
+    System_Ext(notification, "Notification Service", "Sends alerts and notifications")
+    System_Ext(audit, "Audit Service", "Audit logging")
+    System_Ext(auth, "Auth Service", "JWT authentication")
+    System_Ext(adminui, "Admin UI", "Administrative interface")
+
+    System_Ext(mysql, "MySQL Database", "Persistent storage")
+    System_Ext(dapr, "Dapr Sidecar", "Pub/sub messaging")
+    System_Ext(otel, "OpenTelemetry Collector", "Observability")
+
+    Rel(admin, adminui, "Uses")
+    Rel(adminui, inventory, "HTTP/REST", "Inventory management")
+
+    Rel(product, inventory, "HTTP", "Check availability")
+    Rel(order, inventory, "HTTP", "Reserve/release stock")
+    Rel(inventory, auth, "HTTP", "Validate JWT tokens")
+
+    Rel(product, dapr, "Events", "product.created/updated/deleted")
+    Rel(order, dapr, "Events", "order.created/cancelled/completed")
+    Rel(dapr, inventory, "Events", "Subscribed events")
+
+    Rel(inventory, dapr, "Events", "inventory.* events")
+    Rel(dapr, product, "Events", "Stock updates")
+    Rel(dapr, notification, "Events", "Low stock alerts")
+    Rel(dapr, audit, "Events", "Audit trail")
+
+    Rel(inventory, mysql, "SQL", "Persistent storage")
+    Rel(inventory, otel, "OTLP", "Traces and metrics")
+```
 
 ### 2.2 External Interfaces
 
-| System        | Direction            | Protocol                  | Description          |
-| ------------- | -------------------- | ------------------------- | -------------------- |
-| <!-- TODO --> | <!-- in/out/both --> | <!-- HTTP/gRPC/Events --> | <!-- description --> |
+| System               | Direction | Protocol    | Description                                         |
+| -------------------- | --------- | ----------- | --------------------------------------------------- |
+| Product Service      | In        | HTTP        | Queries stock availability for products             |
+| Product Service      | In        | Dapr Events | Receives product.created/updated/deleted events     |
+| Order Service        | In        | HTTP        | Reserve and release inventory for orders            |
+| Order Service        | In        | Dapr Events | Receives order.created/cancelled/completed events   |
+| Auth Service         | Out       | HTTP        | JWT token validation for protected endpoints        |
+| Admin UI             | In        | HTTP        | Administrative inventory management                 |
+| Product Service      | Out       | Dapr Events | Publishes inventory.stock.updated events            |
+| Notification Service | Out       | Dapr Events | Publishes inventory.low.stock alerts                |
+| Audit Service        | Out       | Dapr Events | Publishes inventory change events for audit logging |
+| MySQL                | Out       | SQL         | Persistent storage for inventory and reservations   |
 
 ### 2.3 Dependencies
 
 #### 2.3.1 Upstream Dependencies
 
-<!-- TODO: Services this service depends on -->
+| Service         | Dependency Type | Purpose                                      |
+| --------------- | --------------- | -------------------------------------------- |
+| Product Service | Event           | Sync inventory records when products change  |
+| Order Service   | Event           | Process order-related inventory operations   |
+| Auth Service    | HTTP            | JWT validation for admin/protected endpoints |
 
 #### 2.3.2 Downstream Consumers
 
-<!-- TODO: Services that consume from this service -->
+| Consumer             | Interface   | Data Provided                               |
+| -------------------- | ----------- | ------------------------------------------- |
+| Product Service      | HTTP        | Stock availability queries                  |
+| Product Service      | Dapr Events | inventory.stock.updated, inventory.created  |
+| Order Service        | HTTP        | Reserve/release/check operations            |
+| Order Service        | Dapr Events | inventory.reserved, inventory.released      |
+| Notification Service | Dapr Events | inventory.low.stock, inventory.out.of.stock |
+| Audit Service        | Dapr Events | All inventory change events                 |
+| Admin UI             | HTTP        | Full inventory management API               |
+
+#### 2.3.3 Infrastructure Dependencies
+
+| Component               | Purpose                       | Port/Connection          |
+| ----------------------- | ----------------------------- | ------------------------ |
+| MySQL 8.x               | Persistent storage            | 3306 (configurable)      |
+| Dapr Sidecar            | Pub/sub messaging             | HTTP: 3504, gRPC: 50004  |
+| RabbitMQ (via Dapr)     | Message broker backend        | Abstracted by Dapr       |
+| OpenTelemetry Collector | Distributed tracing & metrics | 4317 (gRPC), 4318 (HTTP) |
 
 ---
 
