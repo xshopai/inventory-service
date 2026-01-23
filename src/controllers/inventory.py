@@ -13,6 +13,10 @@ from src.utils.schemas import (
     InventorySearchSchema, BulkOperationRequestSchema
 )
 from src.utils.event_publisher import event_publisher
+from src.utils.error_codes import (
+    sku_not_found_error, sku_already_exists_error, 
+    validation_error, create_error_response, ErrorCode
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -216,7 +220,7 @@ class InventoryItem(Resource):
                 item = inventory_service.update_inventory_item(identifier, **data)
                 
                 if not item:
-                    return {'error': 'Inventory item not found'}, 404
+                    return sku_not_found_error(identifier)
                 
                 # Publish inventory.stock.updated event
                 correlation_id = getattr(g, 'correlation_id', None)
@@ -230,12 +234,12 @@ class InventoryItem(Resource):
                 return result, 200
                 
             except ValidationError as e:
-                return {'error': 'Validation failed', 'details': e.messages}, 400
+                return validation_error("Invalid request data", e.messages)
             except ValueError as e:
-                return {'error': str(e)}, 400
+                return create_error_response(ErrorCode.VALIDATION_ERROR, str(e), status_code=400)
             except Exception as e:
                 logger.error(f"Error updating inventory: {e}")
-                return {'error': 'Internal server error'}, 500
+                return create_error_response(ErrorCode.INTERNAL_ERROR, "Internal server error", status_code=500)
 
         @api.doc('delete_inventory')
         @require_admin
@@ -246,13 +250,14 @@ class InventoryItem(Resource):
                 success = inventory_service.delete_inventory_item(identifier)
                 
                 if not success:
-                    return {'error': 'Inventory item not found'}, 404
+                    return sku_not_found_error(identifier)
                 
-                return {'message': 'Inventory item deleted successfully'}, 200
+                # Return 204 No Content as per PRD
+                return '', 204
                 
             except Exception as e:
                 logger.error(f"Error deleting inventory: {e}")
-                return {'error': 'Internal server error'}, 500
+                return create_error_response(ErrorCode.INTERNAL_ERROR, "Internal server error", status_code=500)
 
 @inventory_ns.route('/<string:identifier>/adjust')
 class StockAdjustment(Resource):

@@ -10,6 +10,10 @@ from src.utils.schemas import (
     ReservationRequestSchema, ReservationResponseSchema,
     ReservationConfirmRequestSchema
 )
+from src.utils.error_codes import (
+    reservation_not_found_error, insufficient_stock_error,
+    validation_error, create_error_response, ErrorCode
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -102,18 +106,20 @@ class ReservationList(Resource):
                 reservation = inventory_service.create_reservation(**data)
                 
                 if not reservation:
-                    return {'error': 'Insufficient stock for reservation'}, 409
+                    # Get SKU from request to provide better error
+                    sku = data.get('sku', 'unknown')
+                    return insufficient_stock_error(sku, data.get('quantity', 0), 0)
                 
                 result = reservation_response_schema.dump(reservation)
                 return result, 201
                 
             except ValidationError as e:
-                return {'error': 'Validation failed', 'details': e.messages}, 400
+                return validation_error("Invalid request data", e.messages)
             except ValueError as e:
-                return {'error': str(e)}, 400
+                return create_error_response(ErrorCode.VALIDATION_ERROR, str(e), status_code=400)
             except Exception as e:
                 logger.error(f"Error creating reservation: {e}")
-                return {'error': 'Internal server error'}, 500
+                return create_error_response(ErrorCode.INTERNAL_ERROR, "Internal server error", status_code=500)
 
 @reservations_ns.route('/<string:reservation_id>')
 class Reservation(Resource):
@@ -126,14 +132,14 @@ class Reservation(Resource):
                 reservation = inventory_service.get_reservation(reservation_id)
                 
                 if not reservation:
-                    return {'error': 'Reservation not found'}, 404
+                    return reservation_not_found_error(reservation_id)
                 
                 result = reservation_response_schema.dump(reservation)
                 return result, 200
                 
             except Exception as e:
                 logger.error(f"Error getting reservation {reservation_id}: {e}")
-                return {'error': 'Internal server error'}, 500
+                return create_error_response(ErrorCode.INTERNAL_ERROR, "Internal server error", status_code=500)
 
         @api.doc('cancel_reservation')
         def delete(self, reservation_id):
@@ -143,13 +149,13 @@ class Reservation(Resource):
                 success = inventory_service.cancel_reservation(reservation_id)
                 
                 if not success:
-                    return {'error': 'Reservation not found or already processed'}, 404
+                    return reservation_not_found_error(reservation_id)
                 
                 return {'message': 'Reservation cancelled successfully'}, 200
                 
             except Exception as e:
                 logger.error(f"Error cancelling reservation {reservation_id}: {e}")
-                return {'error': 'Internal server error'}, 500
+                return create_error_response(ErrorCode.INTERNAL_ERROR, "Internal server error", status_code=500)
 
 @reservations_ns.route('/<string:reservation_id>/confirm')
 class ReservationConfirmSingle(Resource):
@@ -169,21 +175,21 @@ class ReservationConfirmSingle(Resource):
                         order_id = reservation.get('order_id')
                 
                 if not order_id:
-                    return {'error': 'order_id is required'}, 400
+                    return validation_error("order_id is required")
                 
                 inventory_service = InventoryService()
                 success = inventory_service.confirm_reservation(reservation_id, order_id)
                 
                 if not success:
-                    return {'error': 'Reservation not found or cannot be confirmed'}, 404
+                    return reservation_not_found_error(reservation_id)
                 
                 return {'message': 'Reservation confirmed successfully', 'reservation_id': reservation_id}, 200
                 
             except ValueError as e:
-                return {'error': str(e)}, 400
+                return create_error_response(ErrorCode.VALIDATION_ERROR, str(e), status_code=400)
             except Exception as e:
                 logger.error(f"Error confirming reservation {reservation_id}: {e}")
-                return {'error': 'Internal server error'}, 500
+                return create_error_response(ErrorCode.INTERNAL_ERROR, "Internal server error", status_code=500)
 
 @reservations_ns.route('/<string:reservation_id>/release')
 class ReservationRelease(Resource):
@@ -195,7 +201,7 @@ class ReservationRelease(Resource):
                 reservation = inventory_service.release_reservation(reservation_id)
                 
                 if not reservation:
-                    return {'error': 'Reservation not found'}, 404
+                    return reservation_not_found_error(reservation_id)
                 
                 return {
                     'message': 'Reservation released successfully',
@@ -203,10 +209,10 @@ class ReservationRelease(Resource):
                 }, 200
                 
             except ValueError as e:
-                return {'error': str(e)}, 400
+                return create_error_response(ErrorCode.VALIDATION_ERROR, str(e), status_code=400)
             except Exception as e:
                 logger.error(f"Error releasing reservation {reservation_id}: {e}")
-                return {'error': 'Internal server error'}, 500
+                return create_error_response(ErrorCode.INTERNAL_ERROR, "Internal server error", status_code=500)
 
 @reservations_ns.route('/confirm')
 class ReservationConfirm(Resource):
