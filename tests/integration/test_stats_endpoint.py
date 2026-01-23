@@ -5,7 +5,7 @@ Tests the stats endpoint with real database queries
 
 import pytest
 from flask import Flask
-from src.api.main import create_app
+from src import create_app
 from src.database import db
 from src.models import InventoryItem
 

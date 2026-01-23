@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from src.services import InventoryService
 from src.models import InventoryItem, Reservation, StockMovementType, ReservationStatus
-from tests.conftest import create_test_inventory_item, create_test_reservation
+from tests.unit.conftest import create_test_inventory_item, create_test_reservation
 
 
 class TestInventoryService:
