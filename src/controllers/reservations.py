@@ -163,19 +163,12 @@ class ReservationConfirmSingle(Resource):
         def post(self, reservation_id):
             """Confirm a single reservation (PRD 4.8)"""
             try:
-                # Get order_id from request body if provided
+                # Require order_id in request body for validation
                 data = request.json or {}
                 order_id = data.get('order_id')
                 
-                # If order_id not in body, try to get it from the reservation itself
                 if not order_id:
-                    inventory_service = InventoryService()
-                    reservation = inventory_service.get_reservation(reservation_id)
-                    if reservation:
-                        order_id = reservation.get('order_id')
-                
-                if not order_id:
-                    return validation_error("order_id is required")
+                    return validation_error("order_id is required in request body")
                 
                 inventory_service = InventoryService()
                 success = inventory_service.confirm_reservation(reservation_id, order_id)

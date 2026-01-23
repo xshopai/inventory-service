@@ -152,7 +152,7 @@ class InventoryService:
             raise
     
     def get_inventory_by_sku(self, sku: str) -> Optional[Dict[str, Any]]:
-        """Get inventory item by SKU with product details"""
+        """Get inventory item by SKU"""
         try:
             inventory_item = self.inventory_repo.get_by_sku(sku)
             if not inventory_item:
@@ -160,13 +160,8 @@ class InventoryService:
             
             result = inventory_item.to_dict()
             
-            # Enrich with product details if available
-            try:
-                product_details = self.product_client.get_product_by_id(inventory_item.product_id)
-                if product_details:
-                    result['product'] = product_details
-            except Exception as e:
-                logger.warning(f"Failed to fetch product details for {inventory_item.product_id}: {e}")
+            # Note: Product details enrichment removed - should be handled by Product Service
+            # Inventory Service only manages stock levels, not product catalog data
             
             return result
             
@@ -414,25 +409,23 @@ class InventoryService:
         """
         Get inventory item with enhanced product details
         
+        Note: This method is deprecated. Product details enrichment should be handled 
+        by the Product Service, not Inventory Service. Inventory Service only manages 
+        stock levels.
+        
         Args:
             product_id: Product identifier
             
         Returns:
-            Inventory item with product details or None
+            Inventory item or None
         """
         try:
             # Get base inventory item
             inventory_item = self.get_inventory_by_product_id(product_id)
             
-            if inventory_item:
-                # Add product details from external service
-                try:
-                    product_details = self.product_client.get_product(product_id)
-                    inventory_item['product_details'] = product_details
-                except Exception as e:
-                    logger.warning(f"Could not fetch product details for {product_id}: {e}")
-                    inventory_item['product_details'] = {'error': 'Product details unavailable'}
-                    
+            # Note: Product details enrichment removed - should be handled by Product Service
+            # Inventory Service only manages stock levels, not product catalog data
+            
             return inventory_item
             
         except Exception as e:
