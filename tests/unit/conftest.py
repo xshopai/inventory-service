@@ -10,7 +10,7 @@ os.environ['FLASK_ENV'] = 'testing'
 os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
 os.environ['REDIS_URL'] = 'redis://localhost:6379/1'
 
-from src.api.main import create_app
+from src import create_app
 from src.models import db, InventoryItem, Reservation, StockMovement, StockMovementType, ReservationStatus
 
 
