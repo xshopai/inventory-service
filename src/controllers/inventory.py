@@ -356,74 +356,21 @@ class BatchInventoryRetrieval(Resource):
                 # Validate request has 'skus' array
                 data = request.json
                 if not data or 'skus' not in data:
-                    return {'error': 'Request must contain "skus" array'}, 400
+                    return validation_error("Request must contain 'skus' array")
                 
                 skus = data['skus']
                 if not isinstance(skus, list):
-                    return {'error': '"skus" must be an array'}, 400
+                    return validation_error("'skus' must be an array")
                 
                 # Check for inStockOnly filter from query params or request body
                 in_stock_only = request.args.get('inStockOnly', 'false').lower() == 'true' or data.get('in_stock_only', False)
                 
+                # Use service method for business logic
                 inventory_service = InventoryService()
-                result = []
-                
-                for sku in skus:
-                    # Try exact match first
-                    inventory_items = inventory_service.inventory_repo.get_multiple_by_skus([sku])
-                    
-                    if inventory_items:
-                        # Exact match found - return it
-                        item = inventory_items[0]
-                        item_data = {
-                            'sku': item.sku,
-                            'quantityAvailable': item.quantity_available,
-                            'quantityReserved': item.quantity_reserved,
-                            'reorderPoint': item.reorder_level,
-                            'reorderQuantity': item.max_stock - item.reorder_level if item.max_stock > item.reorder_level else 0,
-                            'status': 'in_stock' if item.quantity_available > 0 else 'out_of_stock'
-                        }
-                        
-                        # Apply filter if requested
-                        if not in_stock_only or item.quantity_available > 0:
-                            result.append(item_data)
-                    else:
-                        # No exact match - check if it's a base SKU by finding variants
-                        # Base SKU pattern: BRAND-DEPT-CAT-NUM (e.g., ANT-WOM-CLO-001)
-                        # Variant SKU pattern: BRAND-DEPT-CAT-NUM-COLOR-SIZE (e.g., ANT-WOM-CLO-001-GRAY-M)
-                        variant_items = inventory_service.inventory_repo.get_variants_by_base_sku(sku)
-                        
-                        if variant_items:
-                            # Aggregate inventory across all variants
-                            total_available = sum(item.quantity_available for item in variant_items)
-                            total_reserved = sum(item.quantity_reserved for item in variant_items)
-                            
-                            item_data = {
-                                'sku': sku,
-                                'quantityAvailable': total_available,
-                                'quantityReserved': total_reserved,
-                                'reorderPoint': variant_items[0].reorder_level if variant_items else 0,
-                                'reorderQuantity': variant_items[0].max_stock - variant_items[0].reorder_level if variant_items and variant_items[0].max_stock > variant_items[0].reorder_level else 0,
-                                'status': 'in_stock' if total_available > 0 else 'out_of_stock',
-                                'variantCount': len(variant_items)
-                            }
-                            
-                            # Apply filter if requested
-                            if not in_stock_only or total_available > 0:
-                                result.append(item_data)
-                        elif not in_stock_only:
-                            # No inventory found for this SKU - only include if not filtering
-                            result.append({
-                                'sku': sku,
-                                'quantityAvailable': 0,
-                                'quantityReserved': 0,
-                                'reorderPoint': 0,
-                                'reorderQuantity': 0,
-                                'status': 'out_of_stock'
-                            })
+                result = inventory_service.get_batch_inventory(skus, in_stock_only)
                 
                 return result, 200
                 
             except Exception as e:
                 logger.error(f"Error retrieving batch inventory: {e}")
-                return {'error': 'Internal server error', 'details': str(e)}, 500
+                return create_error_response(ErrorCode.INTERNAL_ERROR, "Internal server error", status_code=500)

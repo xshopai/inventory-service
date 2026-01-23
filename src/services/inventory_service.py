@@ -20,6 +20,81 @@ class InventoryService:
         self.inventory_repo = InventoryRepository()
         self.reservation_repo = ReservationRepository()
     
+    def get_batch_inventory(self, skus: List[str], in_stock_only: bool = False) -> List[Dict[str, Any]]:
+        """
+        Get inventory data for multiple SKUs (supports both base and variant SKUs)
+        Moved from controller to service layer for proper separation of concerns
+        
+        Args:
+            skus: List of SKUs to query
+            in_stock_only: If True, only return items with available quantity > 0
+            
+        Returns:
+            List of inventory item dictionaries
+        """
+        try:
+            result = []
+            
+            for sku in skus:
+                # Try exact match first
+                inventory_items = self.inventory_repo.get_multiple_by_skus([sku])
+                
+                if inventory_items:
+                    # Exact match found - return it
+                    item = inventory_items[0]
+                    item_data = {
+                        'sku': item.sku,
+                        'quantityAvailable': item.quantity_available,
+                        'quantityReserved': item.quantity_reserved,
+                        'reorderPoint': item.reorder_level,
+                        'reorderQuantity': item.max_stock - item.reorder_level if item.max_stock > item.reorder_level else 0,
+                        'status': 'in_stock' if item.quantity_available > 0 else 'out_of_stock'
+                    }
+                    
+                    # Apply filter if requested
+                    if not in_stock_only or item.quantity_available > 0:
+                        result.append(item_data)
+                else:
+                    # No exact match - check if it's a base SKU by finding variants
+                    # Base SKU pattern: BRAND-DEPT-CAT-NUM (e.g., ANT-WOM-CLO-001)
+                    # Variant SKU pattern: BRAND-DEPT-CAT-NUM-COLOR-SIZE (e.g., ANT-WOM-CLO-001-GRAY-M)
+                    variant_items = self.inventory_repo.get_variants_by_base_sku(sku)
+                    
+                    if variant_items:
+                        # Aggregate inventory across all variants
+                        total_available = sum(item.quantity_available for item in variant_items)
+                        total_reserved = sum(item.quantity_reserved for item in variant_items)
+                        
+                        item_data = {
+                            'sku': sku,
+                            'quantityAvailable': total_available,
+                            'quantityReserved': total_reserved,
+                            'reorderPoint': variant_items[0].reorder_level if variant_items else 0,
+                            'reorderQuantity': variant_items[0].max_stock - variant_items[0].reorder_level if variant_items and variant_items[0].max_stock > variant_items[0].reorder_level else 0,
+                            'status': 'in_stock' if total_available > 0 else 'out_of_stock',
+                            'variantCount': len(variant_items)
+                        }
+                        
+                        # Apply filter if requested
+                        if not in_stock_only or total_available > 0:
+                            result.append(item_data)
+                    elif not in_stock_only:
+                        # No inventory found for this SKU - only include if not filtering
+                        result.append({
+                            'sku': sku,
+                            'quantityAvailable': 0,
+                            'quantityReserved': 0,
+                            'reorderPoint': 0,
+                            'reorderQuantity': 0,
+                            'status': 'out_of_stock'
+                        })
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error retrieving batch inventory: {str(e)}")
+            raise
+    
     def check_stock_availability(self, stock_items: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Check stock availability for multiple items
