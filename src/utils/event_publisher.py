@@ -1,28 +1,33 @@
 """
-Dapr Event Publisher for Inventory Service
-Synchronous Flask-compatible event publishing using Dapr SDK
+Event Publisher for Inventory Service
+Uses Messaging Abstraction Layer per Architecture spec section 5.5
 """
-
-from dapr.clients import DaprClient
 from flask import current_app
-import json
 from typing import Dict, Any, Optional
 from datetime import datetime
 import uuid
 
 # Import trace context for W3C Trace Context support
 from src.middlewares.trace_context import get_trace_id
+from src.messaging import create_messaging_provider, MessagingProvider
 
 
 class InventoryEventPublisher:
     """
-    Synchronous Dapr event publisher for Flask-based inventory service.
-    Handles publishing inventory-related events to RabbitMQ via Dapr.
+    Event publisher for inventory-related events.
+    Uses messaging abstraction layer for deployment flexibility.
     """
     
     def __init__(self):
-        self.pubsub_name = "inventory-pubsub"
         self.service_name = "inventory-service"
+        self._provider: Optional[MessagingProvider] = None
+    
+    @property
+    def provider(self) -> MessagingProvider:
+        """Lazy initialization of messaging provider."""
+        if self._provider is None:
+            self._provider = create_messaging_provider()
+        return self._provider
     
     def _build_event_payload(self, event_type: str, data: Dict[str, Any], 
                             correlation_id: Optional[str] = None) -> Dict[str, Any]:
@@ -41,7 +46,7 @@ class InventoryEventPublisher:
     def publish_event(self, event_type: str, data: Dict[str, Any], 
                      correlation_id: Optional[str] = None) -> bool:
         """
-        Publish event to Dapr pub/sub synchronously.
+        Publish event via messaging abstraction layer.
         
         Args:
             event_type: Event type/topic name (e.g., 'inventory.stock.updated')
@@ -58,24 +63,24 @@ class InventoryEventPublisher:
             
             event_payload = self._build_event_payload(event_type, data, correlation_id)
             
-            # Synchronous Dapr client call - blocks for ~5-20ms
-            with DaprClient() as client:
-                client.publish_event(
-                    pubsub_name=self.pubsub_name,
-                    topic_name=event_type,
-                    data=json.dumps(event_payload),
-                    data_content_type="application/json"
+            # Publish via abstraction layer
+            success = self.provider.publish_event(
+                topic=event_type,
+                event_data=event_payload,
+                correlation_id=correlation_id
+            )
+            
+            if success:
+                current_app.logger.info(
+                    f"✅ Published event: {event_type}",
+                    extra={
+                        "eventType": event_type,
+                        "correlationId": correlation_id,
+                        "service": self.service_name
+                    }
                 )
             
-            current_app.logger.info(
-                f"✅ Published event: {event_type}",
-                extra={
-                    "eventType": event_type,
-                    "correlationId": correlation_id,
-                    "service": self.service_name
-                }
-            )
-            return True
+            return success
             
         except Exception as e:
             current_app.logger.error(
