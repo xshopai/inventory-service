@@ -99,29 +99,6 @@ class InventoryService:
             logger.error(f"Error getting inventory for SKU {sku}: {str(e)}")
             raise
     
-
-        """Get inventory item by product ID"""
-        try:
-            inventory_item = self.inventory_repo.get_by_product_id(product_id)
-            if not inventory_item:
-                return None
-            
-            result = inventory_item.to_dict()
-            
-            # Enrich with product details if available
-            try:
-                product_details = self.product_client.get_product_by_id(inventory_item.product_id)
-                if product_details:
-                    result['product'] = product_details
-            except Exception as e:
-                logger.warning(f"Failed to fetch product details for {inventory_item.product_id}: {e}")
-            
-            return result
-            
-        except Exception as e:
-            logger.error(f"Error getting inventory for product ID {product_id}: {str(e)}")
-            raise
-    
     def create_inventory_item(self, **kwargs) -> Dict[str, Any]:
         """Create a new inventory item"""
         try:
@@ -165,15 +142,15 @@ class InventoryService:
             return success
             
         except Exception as e:
-            logger.error(f"Error deleting inventory item for product {product_id}: {str(e)}")
+            logger.error(f"Error deleting inventory item for SKU {sku}: {str(e)}")
             raise
     
     def update_inventory_item(self, sku: str, **kwargs) -> Dict[str, Any]:
         """Update an inventory item"""
         try:
-            inventory_item = self.inventory_repo.get_by_product_id(product_id)
+            inventory_item = self.inventory_repo.get_by_sku(sku)
             if not inventory_item:
-                raise ValueError(f"Inventory item for product {product_id} not found")
+                raise ValueError(f"Inventory item for SKU {sku} not found")
             
             # Update allowed fields
             for key, value in kwargs.items():
@@ -188,7 +165,7 @@ class InventoryService:
             return updated_item.to_dict()
             
         except Exception as e:
-            logger.error(f"Error updating inventory item for product {product_id}: {str(e)}")
+            logger.error(f"Error updating inventory item for SKU {sku}: {str(e)}")
             raise
 
     def adjust_stock(self, sku: str, quantity: int, movement_type, reference: str = None, reason: str = None) -> Dict[str, Any]:
@@ -505,11 +482,11 @@ class InventoryService:
             raise
     
     def search_reservations(self, **kwargs):
-        """Search reservations with filters - returns list for compatibility with tests"""
+        """Search reservations with filters - returns tuple (list, count)"""
         try:
             reservations, total = self.reservation_repo.search(**kwargs)
-            # Return just the list for test compatibility
-            return [r.to_dict() for r in reservations]
+            # Return tuple for consistency with controller expectations
+            return [r.to_dict() for r in reservations], total
             
         except Exception as e:
             logger.error(f"Error searching reservations: {str(e)}")
