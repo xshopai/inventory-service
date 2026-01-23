@@ -44,6 +44,7 @@ You should see these containers:
 - `dapr_redis`
 - `dapr_zipkin`
 - `dapr_placement`
+- `dapr_scheduler`
 
 ---
 
@@ -59,6 +60,8 @@ DAPR_HTTP_PORT=3504
 
 # Database and service tokens remain the same as PREREQUISITES.md
 ```
+
+> **Note**: When using Dapr mode, you do NOT need the `RABBITMQ_*` environment variables in your `.env` file. The Dapr sidecar handles RabbitMQ connections using the configuration in `.dapr/components/event-bus.yaml`.
 
 ---
 
@@ -84,14 +87,12 @@ If using Dapr secret store, create `.dapr/secrets.json`:
 
 ```json
 {
-  "mysql-host": "localhost",
-  "mysql-port": "3306",
-  "mysql-database": "inventory_service_db",
-  "mysql-username": "admin",
-  "mysql-password": "admin123",
-  "jwt-secret": "your-jwt-secret-key"
+  "DATABASE_URL": "mysql+pymysql://admin:admin123@localhost:3306/inventory_service_db",
+  "JWT_SECRET": "8tDBDMcpxroHoHjXjk8xp/uAn8rzD4y8ZZremFkC4gI="
 }
 ```
+
+> **Note:** Use UPPER_SNAKE_CASE for secret names to match platform conventions (`.env` files, auth-service, etc.).
 
 > **Security Note:** This file is gitignored. Never commit secrets.json to version control.
 
@@ -147,44 +148,6 @@ curl http://localhost:8004/health
 
 ---
 
-## Step 7: Test Event Publishing
-
-```bash
-# Create inventory item (requires service token)
-curl -X POST http://localhost:8004/api/inventory \
-  -H "X-Service-Token: svc-product-<your-token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "sku": "TEST-SKU-001",
-    "quantity": 100,
-    "product_id": "prod-123"
-  }'
-
-# Check Dapr logs for:
-# "Published event via Dapr: inventory.created"
-```
-
----
-
-## Step 8: Test Event Subscriptions
-
-```bash
-# Simulate product.created event from Product Service
-curl -X POST http://localhost:3504/v1.0/publish/event-bus/product.created \
-  -H "Content-Type: application/json" \
-  -d '{
-    "data": {
-      "productId": "prod-123",
-      "sku": "SKU-TEST-001",
-      "name": "Test Product"
-    }
-  }'
-
-# Check service logs - should see "Received product.created event"
-```
-
----
-
 ## Dapr Dashboard (Optional)
 
 ```bash
@@ -200,23 +163,6 @@ The dashboard shows:
 - Component status
 - Pub/sub subscriptions
 - Service invocations
-
----
-
-## Development Workflow with Dapr
-
-1. **Start dependencies**: `docker-compose up -d inventory-mysql xshopai-rabbitmq`
-2. **Activate venv**:
-   - Linux/Mac: `source venv/bin/activate`
-   - Windows PowerShell: `.\venv\Scripts\Activate.ps1`
-   - Windows CMD: `venv\Scripts\activate.bat`
-   - Windows Git Bash: `source venv/Scripts/activate`
-3. **Start with Dapr**:
-   - Linux/Mac: `./run.sh`
-   - Windows: `.\run.ps1`
-4. **Make changes**: Edit code (restart required with Dapr)
-5. **Test events**: Use curl to publish/subscribe
-6. **Stop service**: `dapr stop --app-id inventory-service`
 
 ---
 
@@ -248,11 +194,50 @@ spec:
   metadata:
     - name: connectionString
       value: 'amqp://guest:guest@127.0.0.1:5672'
+    - name: consumerID
+      value: 'inventory-service'
     - name: durable
       value: 'true'
     - name: deletedWhenUnused
       value: 'false'
+    - name: autoAck
+      value: 'false'
+    - name: deliveryMode
+      value: '2'
+    - name: requeueInFailure
+      value: 'true'
+    - name: prefetchCount
+      value: '10'
+    - name: reconnectWait
+      value: '5'
+    - name: concurrencyMode
+      value: 'parallel'
+    - name: publisherConfirm
+      value: 'false'
+    - name: enableDeadLetter
+      value: 'true'
+    - name: exchangeKind
+      value: 'topic'
+scopes:
+  - inventory-service
 ```
+
+**Key Configuration Options:**
+
+| Attribute          | Value                    | Description                                         |
+| ------------------ | ------------------------ | --------------------------------------------------- |
+| `connectionString` | `amqp://guest:guest@...` | RabbitMQ connection (matches container credentials) |
+| `consumerID`       | `inventory-service`      | Consumer group identity                             |
+| `durable`          | `true`                   | Queues persist across RabbitMQ restarts             |
+| `autoAck`          | `false`                  | Manual acknowledgment for reliability               |
+| `deliveryMode`     | `2`                      | Persistent messages (survives broker restart)       |
+| `requeueInFailure` | `true`                   | Requeue failed messages for retry                   |
+| `prefetchCount`    | `10`                     | Messages prefetched per consumer                    |
+| `concurrencyMode`  | `parallel`               | Process multiple messages concurrently              |
+| `enableDeadLetter` | `true`                   | Failed messages go to dead letter queue             |
+| `exchangeKind`     | `topic`                  | Topic-based routing for flexibility                 |
+
+> **Note**: See [Dapr RabbitMQ documentation](https://docs.dapr.io/reference/components-reference/supported-pubsub/setup-rabbitmq/) for all available options.
 
 ### Event Subscriptions
 
@@ -267,43 +252,6 @@ Subscribed events:
 | `order.created` | `/events/order-created` |
 | `order.cancelled` | `/events/order-cancelled` |
 | `order.completed` | `/events/order-completed` |
-
----
-
-## Troubleshooting
-
-### Dapr Sidecar Not Starting
-
-```bash
-# Check if Dapr is initialized
-dapr --version
-
-# Re-initialize Dapr
-dapr uninstall
-dapr init
-```
-
-### Event Not Being Published
-
-```bash
-# Check pub/sub component is loaded
-curl http://localhost:3504/v1.0/metadata | jq '.components'
-
-# Verify RabbitMQ is accessible
-curl -u guest:guest http://localhost:15672/api/overview
-```
-
-### Cannot Receive Events
-
-```bash
-# Verify subscriptions are configured
-curl http://localhost:3504/v1.0/metadata | jq '.subscriptions'
-
-# Check event route is responding
-curl http://localhost:8004/events/product-created -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"data": {"test": true}}'
-```
 
 ---
 

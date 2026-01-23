@@ -29,12 +29,8 @@ def get_database_uri():
     
     # Priority 3: Try Dapr secrets (for production with Dapr sidecar)
     try:
-        from src.utils.secret_manager import get_database_config
-        db_config = get_database_config()
-        return (
-            f"mysql+pymysql://{db_config['user']}:{db_config['password']}@"
-            f"{db_config['host']}:{db_config['port']}/{db_config['database']}"
-        )
+        from src.utils.secret_manager import get_database_url
+        return get_database_url()
     except Exception:
         pass
     

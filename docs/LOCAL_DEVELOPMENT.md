@@ -20,13 +20,13 @@ For production-like local development with Dapr, see [Local Development with Dap
 
 ## Step 1: Configure Environment for Non-Dapr Mode
 
-Ensure your `.env` file includes the RabbitMQ messaging configuration:
+Ensure your `.env` file includes the required configuration:
 
 ```bash
 # Messaging Configuration (non-Dapr mode)
 MESSAGING_PROVIDER=rabbitmq
 
-# RabbitMQ Connection
+# RabbitMQ Connection (required when MESSAGING_PROVIDER=rabbitmq)
 RABBITMQ_HOST=localhost
 RABBITMQ_PORT=5672
 RABBITMQ_USERNAME=guest
@@ -34,7 +34,20 @@ RABBITMQ_PASSWORD=guest
 RABBITMQ_VHOST=/
 RABBITMQ_URL=amqp://guest:guest@localhost:5672/
 RABBITMQ_EXCHANGE=inventory-events
+
+# JWT Configuration (required for non-Dapr mode)
+# Must match the secret used by auth-service to sign tokens
+JWT_SECRET=8tDBDMcpxroHoHjXjk8xp/uAn8rzD4y8ZZremFkC4gI=
+JWT_ALGORITHM=HS256
+JWT_ISSUER=auth-service
+JWT_AUDIENCE=xshopai-platform
 ```
+
+> **Note**:
+>
+> - `RABBITMQ_*` variables are only needed when using `MESSAGING_PROVIDER=rabbitmq`
+> - `JWT_SECRET` is required for non-Dapr mode (in Dapr mode, it's retrieved from the Secret Store)
+> - If you're using Dapr mode, see [Local Development with Dapr](LOCAL_DEVELOPMENT_DAPR.md) instead
 
 ---
 

@@ -7,7 +7,7 @@ spec:
   version: v1
   metadata:
     - name: connectionString
-      value: 'amqp://admin:admin123@127.0.0.1:5672'
+      value: 'amqp://guest:guest@127.0.0.1:5672'
     - name: consumerID
       value: 'inventory-service'
     - name: durable
@@ -24,8 +24,12 @@ spec:
       value: '10'
     - name: reconnectWait
       value: '5'
-    - name: concurrency
+    - name: concurrencyMode
       value: 'parallel'
+    - name: publisherConfirm
+      value: 'false'
+    - name: enableDeadLetter
+      value: 'true'
     - name: exchangeKind
       value: 'topic'
 scopes:

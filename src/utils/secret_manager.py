@@ -47,21 +47,14 @@ class DaprSecretManager:
             logger.error(f"Error retrieving secret '{key}': {str(e)}")
             raise
     
-    def get_database_config(self) -> Dict[str, Any]:
+    def get_database_url(self) -> str:
         """
-        Get database configuration from secrets
+        Get database URL from Dapr Secret Store
         
         Returns:
-            Dictionary with database configuration
+            Database connection URL string
         """
-        return {
-            'host': self.get_secret('mysql-host'),
-            'port': int(self.get_secret('mysql-port')),
-            'database': self.get_secret('mysql-database'),
-            'user': self.get_secret('mysql-username'),
-            'password': self.get_secret('mysql-password'),
-            'root_password': self.get_secret('mysql-root-password')
-        }
+        return self.get_secret('DATABASE_URL')
     
     def get_jwt_config(self) -> Dict[str, Any]:
         """
@@ -73,7 +66,7 @@ class DaprSecretManager:
         """
         import os
         return {
-            'secret': self.get_secret('jwt-secret'),
+            'secret': self.get_secret('JWT_SECRET'),
             'algorithm': os.environ.get('JWT_ALGORITHM', 'HS256'),
             'expiration': int(os.environ.get('JWT_EXPIRATION', '3600')),
             'issuer': os.environ.get('JWT_ISSUER', 'auth-service'),
@@ -95,13 +88,63 @@ def get_secret_manager() -> DaprSecretManager:
 
 
 # Convenience functions for direct access
-def get_database_config() -> Dict[str, Any]:
-    """Get database configuration"""
-    return get_secret_manager().get_database_config()
+def get_database_url() -> str:
+    """
+    Get database URL.
+    
+    First tries Dapr Secret Store (for production/Dapr mode).
+    Falls back to DATABASE_URL environment variable (for local dev without Dapr).
+    
+    Returns:
+        Database connection URL string
+    """
+    # Try Dapr Secret Store first
+    try:
+        return get_secret_manager().get_database_url()
+    except Exception as e:
+        logger.warning(f'Dapr Secret Store not available, falling back to env vars: {e}')
+    
+    # Fallback to environment variable for local development without Dapr
+    database_url = os.environ.get('DATABASE_URL')
+    if not database_url:
+        raise RuntimeError(
+            'DATABASE_URL not configured. Set DATABASE_URL env var for non-Dapr mode, '
+            'or ensure Dapr sidecar is running with secrets configured.'
+        )
+    
+    return database_url
 
 
 def get_jwt_config() -> Dict[str, Any]:
-    """Get JWT configuration"""
-    return get_secret_manager().get_jwt_config()
+    """
+    Get JWT configuration.
+    
+    First tries Dapr Secret Store (for production/Dapr mode).
+    Falls back to environment variables (for local dev without Dapr).
+    
+    Returns:
+        Dictionary with JWT configuration
+    """
+    # Try Dapr Secret Store first
+    try:
+        return get_secret_manager().get_jwt_config()
+    except Exception as e:
+        logger.warning(f'Dapr Secret Store not available, falling back to env vars: {e}')
+    
+    # Fallback to environment variables for local development without Dapr
+    jwt_secret = os.environ.get('JWT_SECRET')
+    if not jwt_secret:
+        raise RuntimeError(
+            'JWT_SECRET not configured. Set JWT_SECRET env var for non-Dapr mode, '
+            'or ensure Dapr sidecar is running with secrets configured.'
+        )
+    
+    return {
+        'secret': jwt_secret,
+        'algorithm': os.environ.get('JWT_ALGORITHM', 'HS256'),
+        'expiration': int(os.environ.get('JWT_EXPIRATION', '3600')),
+        'issuer': os.environ.get('JWT_ISSUER', 'auth-service'),
+        'audience': os.environ.get('JWT_AUDIENCE', 'xshopai-platform')
+    }
 
 
