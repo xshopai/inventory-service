@@ -19,6 +19,7 @@ class InventoryService:
     def __init__(self):
         self.inventory_repo = InventoryRepository()
         self.reservation_repo = ReservationRepository()
+        self.redis = None  # Redis caching is optional; initialize if needed
     
     def get_batch_inventory(self, skus: List[str], in_stock_only: bool = False) -> List[Dict[str, Any]]:
         """

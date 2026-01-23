@@ -21,6 +21,9 @@ dapr>=1.16.0
 # System monitoring
 psutil==6.0.0
 
+# HTTP client
+requests>=2.31.0
+
 # Utilities
 python-dateutil==2.9.0
 

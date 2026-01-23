@@ -18,7 +18,6 @@ class TestInventoryRepository:
         # Create item using the model directly (as the repo expects)
         item = InventoryItem(
             sku='TEST-SKU-001',
-            product_id='REPO001',
             quantity_available=100,
             reorder_level=10
         )
@@ -26,7 +25,7 @@ class TestInventoryRepository:
         created_item = repo.create(item)
         
         assert created_item.id is not None
-        assert created_item.product_id == 'REPO001'
+        assert created_item.sku == 'TEST-SKU-001'
         assert created_item.quantity_available == 100
     
     def test_get_by_sku(self, db_session):
@@ -38,17 +37,6 @@ class TestInventoryRepository:
         
         assert retrieved_item is not None
         assert retrieved_item.sku == 'GET-SKU-001'
-        assert retrieved_item.id == original_item.id
-    
-    def test_get_by_product_id(self, db_session):
-        """Test getting inventory item by product ID."""
-        repo = InventoryRepository()
-        original_item = create_test_inventory_item(db_session, product_id='PROD-001')
-        
-        retrieved_item = repo.get_by_product_id('PROD-001')
-        
-        assert retrieved_item is not None
-        assert retrieved_item.product_id == 'PROD-001'
         assert retrieved_item.id == original_item.id
     
     def test_get_by_id(self, db_session):
@@ -67,28 +55,30 @@ class TestInventoryRepository:
         
         # Create multiple test items
         for i in range(5):
-            create_test_inventory_item(db_session, product_id=f'PAGINATE-{i:03d}')
+            create_test_inventory_item(db_session, sku=f'PAGINATE-{i:03d}')
         
         items, total = repo.get_all(page=1, per_page=3)
         
         assert len(items) == 3
         assert total >= 5
     
-    def test_search_by_product_ids(self, db_session):
-        """Test searching by product IDs."""
+    def test_search_with_pagination(self, db_session):
+        """Test search with pagination."""
         repo = InventoryRepository()
         
-        create_test_inventory_item(db_session, product_id='SEARCH001')
-        create_test_inventory_item(db_session, product_id='SEARCH002')
-        create_test_inventory_item(db_session, product_id='SEARCH003')
+        create_test_inventory_item(db_session, sku='SEARCH001')
+        create_test_inventory_item(db_session, sku='SEARCH002')
+        create_test_inventory_item(db_session, sku='SEARCH003')
         
-        items, total = repo.search(product_ids=['SEARCH001', 'SEARCH003'])
+        items, total = repo.search(page=1, per_page=2)
         
         assert len(items) == 2
-        assert total == 2
-        product_ids = [item.product_id for item in items]
-        assert 'SEARCH001' in product_ids
-        assert 'SEARCH003' in product_ids
+        assert total == 3
+        
+        # Test second page
+        items2, total2 = repo.search(page=2, per_page=2)
+        assert len(items2) == 1
+        assert total2 == 3
     
     def test_search_low_stock(self, db_session):
         """Test searching for low stock items."""
@@ -97,13 +87,13 @@ class TestInventoryRepository:
         # Create items with different stock levels
         create_test_inventory_item(
             db_session, 
-            product_id='LOW001',
+            sku='LOW001',
             quantity_available=5,
             reorder_level=10
         )
         create_test_inventory_item(
             db_session,
-            product_id='HIGH001',
+            sku='HIGH001',
             quantity_available=50,
             reorder_level=10
         )
@@ -122,12 +112,12 @@ class TestInventoryRepository:
         # Create out of stock item
         create_test_inventory_item(
             db_session,
-            product_id='OUT001',
+            sku='OUT001',
             quantity_available=0
         )
         create_test_inventory_item(
             db_session,
-            product_id='IN001',
+            sku='IN001',
             quantity_available=50
         )
         

@@ -44,9 +44,10 @@ def create_app(config_name='default'):
         app.logger.warning(f"Inventory API registration failed: {e}. Running without API endpoints.")
     
     # Register reservations blueprint
+    # Per ARCHITECTURE.md Section 4.1, reservations are at /api/inventory/reservations
     try:
         from src.controllers import reservations_bp
-        app.register_blueprint(reservations_bp, url_prefix='/api')
+        app.register_blueprint(reservations_bp, url_prefix='/api/inventory')
         app.logger.info("Reservations API registered successfully")
     except Exception as e:
         app.logger.warning(f"Reservations API registration failed: {e}")

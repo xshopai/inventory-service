@@ -11,7 +11,6 @@ class TestInventoryItem:
         """Test creating an inventory item."""
         item = InventoryItem(
             sku='TEST-SKU-001',
-            product_id='TEST001',
             quantity_available=100,
             quantity_reserved=10,
             reorder_level=20,
@@ -23,7 +22,6 @@ class TestInventoryItem:
         
         assert item.id is not None
         assert item.sku == 'TEST-SKU-001'
-        assert item.product_id == 'TEST001'
         assert item.quantity_available == 100
         assert item.quantity_reserved == 10
         assert item.reorder_level == 20
@@ -69,7 +67,6 @@ class TestInventoryItem:
         
         assert data['id'] == item.id
         assert data['sku'] == item.sku
-        assert data['product_id'] == item.product_id
         assert data['quantity_available'] == item.quantity_available
         assert data['quantity_reserved'] == item.quantity_reserved
         assert data['total_quantity'] == item.total_quantity
@@ -90,7 +87,6 @@ class TestInventoryItem:
         with pytest.raises(Exception):  # Should raise IntegrityError
             item2 = InventoryItem(
                 sku='UNIQUE-SKU-001',
-                product_id='DIFFERENT-PRODUCT',
                 quantity_available=50
             )
             db_session.add(item2)
@@ -148,12 +144,6 @@ class TestReservation:
         
         assert active_reservation.is_expired is False
     
-    def test_product_id_property(self, db_session, sample_inventory_item):
-        """Test product_id property from related inventory item."""
-        reservation = create_test_reservation(db_session, sample_inventory_item)
-        
-        assert reservation.product_id == sample_inventory_item.product_id
-    
     def test_to_dict_method(self, db_session, sample_inventory_item):
         """Test to_dict serialization method."""
         reservation = create_test_reservation(db_session, sample_inventory_item)
@@ -163,7 +153,6 @@ class TestReservation:
         assert data['id'] == reservation.id
         assert data['order_id'] == reservation.order_id
         assert data['sku'] == reservation.sku
-        assert data['product_id'] == reservation.product_id
         assert data['quantity'] == reservation.quantity
         assert data['status'] == reservation.status.value
         assert 'expires_at' in data

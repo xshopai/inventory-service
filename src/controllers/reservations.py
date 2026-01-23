@@ -1,11 +1,19 @@
 """
 Reservations Controller - Handles inventory reservation operations
+
+Per ARCHITECTURE.md Section 4.1:
+- GET /api/inventory/reservations - Admin JWT
+- POST /api/inventory/reservations - Service Token
+- GET /api/inventory/reservations/{id} - Service Token
+- POST /api/inventory/reservations/{id}/confirm - Service Token
+- POST /api/inventory/reservations/{id}/release - Service Token
 """
 
 from flask import Blueprint, request
 from flask_restx import Api, Resource, fields
 from marshmallow import ValidationError
 from src.services import InventoryService
+from src.middlewares.auth import require_admin, require_service_token
 from src.utils.schemas import (
     ReservationRequestSchema, ReservationResponseSchema,
     ReservationConfirmRequestSchema
@@ -58,8 +66,9 @@ reservation_model = get_reservation_models(api)
 class ReservationList(Resource):
         @api.doc('list_reservations')
         @api.marshal_list_with(reservation_model)
+        @require_admin
         def get(self):
-            """Get all reservations with optional filtering"""
+            """Get all reservations with optional filtering (Admin JWT required)"""
             try:
                 # Get query parameters
                 customer_id = request.args.get('customer_id')
@@ -83,7 +92,7 @@ class ReservationList(Resource):
                     'items': result,
                     'pagination': {
                         'page': page,
-                        'per_page': per_page,
+                        'limit': per_page,
                         'total': total,
                         'pages': (total + per_page - 1) // per_page
                     }
@@ -96,8 +105,9 @@ class ReservationList(Resource):
         @api.doc('create_reservation')
         @api.expect(reservation_model)
         @api.marshal_with(reservation_model)
+        @require_service_token
         def post(self):
-            """Create new reservation"""
+            """Create new reservation (Service Token required)"""
             try:
                 # Validate request data
                 data = reservation_request_schema.load(request.json)
@@ -125,8 +135,9 @@ class ReservationList(Resource):
 class Reservation(Resource):
         @api.doc('get_reservation')
         @api.marshal_with(reservation_model)
+        @require_service_token
         def get(self, reservation_id):
-            """Get reservation by ID"""
+            """Get reservation by ID (Service Token required)"""
             try:
                 inventory_service = InventoryService()
                 reservation = inventory_service.get_reservation(reservation_id)
@@ -142,8 +153,9 @@ class Reservation(Resource):
                 return create_error_response(ErrorCode.INTERNAL_ERROR, "Internal server error", status_code=500)
 
         @api.doc('cancel_reservation')
+        @require_service_token
         def delete(self, reservation_id):
-            """Cancel reservation"""
+            """Cancel reservation (Service Token required)"""
             try:
                 inventory_service = InventoryService()
                 success = inventory_service.cancel_reservation(reservation_id)
@@ -160,8 +172,9 @@ class Reservation(Resource):
 @reservations_ns.route('/<string:reservation_id>/confirm')
 class ReservationConfirmSingle(Resource):
         @api.doc('confirm_reservation')
+        @require_service_token
         def post(self, reservation_id):
-            """Confirm a single reservation (PRD 4.8)"""
+            """Confirm a single reservation - Service Token required (PRD 4.8)"""
             try:
                 # Require order_id in request body for validation
                 data = request.json or {}
@@ -187,8 +200,9 @@ class ReservationConfirmSingle(Resource):
 @reservations_ns.route('/<string:reservation_id>/release')
 class ReservationRelease(Resource):
         @api.doc('release_reservation')
+        @require_service_token
         def post(self, reservation_id):
-            """Release a reservation - restores reserved quantity back to available (PRD 4.9)"""
+            """Release a reservation - Service Token required. Restores reserved quantity back to available (PRD 4.9)"""
             try:
                 inventory_service = InventoryService()
                 reservation = inventory_service.release_reservation(reservation_id)
@@ -210,8 +224,9 @@ class ReservationRelease(Resource):
 @reservations_ns.route('/confirm')
 class ReservationConfirm(Resource):
         @api.doc('confirm_reservations')
+        @require_service_token
         def post(self):
-            """Confirm multiple reservations"""
+            """Confirm multiple reservations (Service Token required)"""
             try:
                 # Validate request data
                 data = reservation_confirm_schema.load(request.json)
