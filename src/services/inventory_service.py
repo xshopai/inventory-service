@@ -481,6 +481,46 @@ class InventoryService:
             logger.error(f"Error cancelling reservation {reservation_id}: {str(e)}")
             raise
     
+    def release_reservation(self, reservation_id: str) -> Dict[str, Any]:
+        """
+        Release a reservation - restores reserved quantity back to available stock
+        Per PRD 4.9: Changes reservation status to 'released' and decrements reserved_quantity
+        """
+        try:
+            reservation = self.reservation_repo.get_by_id(reservation_id)
+            if not reservation:
+                raise ValueError("Reservation not found")
+            
+            # Cannot release already confirmed reservation
+            if reservation.status == ReservationStatus.CONFIRMED:
+                raise ValueError("Cannot release confirmed reservation")
+            
+            # Cannot release already released/cancelled reservation
+            if reservation.status in [ReservationStatus.RELEASED, ReservationStatus.CANCELLED]:
+                raise ValueError(f"Reservation already {reservation.status.value}")
+            
+            # Update reservation status to RELEASED
+            self.reservation_repo.update_status(reservation_id, ReservationStatus.RELEASED)
+            
+            # Release stock back to available pool
+            self.inventory_repo.update_stock(
+                sku=reservation.sku,
+                quantity_change=reservation.quantity,
+                movement_type=StockMovementType.RELEASED,
+                reference=reservation.order_id,
+                reason=f"Released reservation for order {reservation.order_id}"
+            )
+            
+            logger.info(f"Released reservation {reservation_id} for order {reservation.order_id}")
+            
+            # Return updated reservation
+            updated_reservation = self.reservation_repo.get_by_id(reservation_id)
+            return updated_reservation.to_dict() if updated_reservation else None
+            
+        except Exception as e:
+            logger.error(f"Error releasing reservation {reservation_id}: {str(e)}")
+            raise
+    
     def search_reservations(self, **kwargs):
         """Search reservations with filters - returns tuple (list, count)"""
         try:

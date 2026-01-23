@@ -115,7 +115,7 @@ class ReservationList(Resource):
                 logger.error(f"Error creating reservation: {e}")
                 return {'error': 'Internal server error'}, 500
 
-@reservations_ns.route('/<int:reservation_id>')
+@reservations_ns.route('/<string:reservation_id>')
 class Reservation(Resource):
         @api.doc('get_reservation')
         @api.marshal_with(reservation_model)
@@ -149,6 +149,63 @@ class Reservation(Resource):
                 
             except Exception as e:
                 logger.error(f"Error cancelling reservation {reservation_id}: {e}")
+                return {'error': 'Internal server error'}, 500
+
+@reservations_ns.route('/<string:reservation_id>/confirm')
+class ReservationConfirmSingle(Resource):
+        @api.doc('confirm_reservation')
+        def post(self, reservation_id):
+            """Confirm a single reservation (PRD 4.8)"""
+            try:
+                # Get order_id from request body if provided
+                data = request.json or {}
+                order_id = data.get('order_id')
+                
+                # If order_id not in body, try to get it from the reservation itself
+                if not order_id:
+                    inventory_service = InventoryService()
+                    reservation = inventory_service.get_reservation(reservation_id)
+                    if reservation:
+                        order_id = reservation.get('order_id')
+                
+                if not order_id:
+                    return {'error': 'order_id is required'}, 400
+                
+                inventory_service = InventoryService()
+                success = inventory_service.confirm_reservation(reservation_id, order_id)
+                
+                if not success:
+                    return {'error': 'Reservation not found or cannot be confirmed'}, 404
+                
+                return {'message': 'Reservation confirmed successfully', 'reservation_id': reservation_id}, 200
+                
+            except ValueError as e:
+                return {'error': str(e)}, 400
+            except Exception as e:
+                logger.error(f"Error confirming reservation {reservation_id}: {e}")
+                return {'error': 'Internal server error'}, 500
+
+@reservations_ns.route('/<string:reservation_id>/release')
+class ReservationRelease(Resource):
+        @api.doc('release_reservation')
+        def post(self, reservation_id):
+            """Release a reservation - restores reserved quantity back to available (PRD 4.9)"""
+            try:
+                inventory_service = InventoryService()
+                reservation = inventory_service.release_reservation(reservation_id)
+                
+                if not reservation:
+                    return {'error': 'Reservation not found'}, 404
+                
+                return {
+                    'message': 'Reservation released successfully',
+                    'reservation': reservation
+                }, 200
+                
+            except ValueError as e:
+                return {'error': str(e)}, 400
+            except Exception as e:
+                logger.error(f"Error releasing reservation {reservation_id}: {e}")
                 return {'error': 'Internal server error'}, 500
 
 @reservations_ns.route('/confirm')

@@ -357,6 +357,9 @@ class BatchInventoryRetrieval(Resource):
                 if not isinstance(skus, list):
                     return {'error': '"skus" must be an array'}, 400
                 
+                # Check for inStockOnly filter from query params or request body
+                in_stock_only = request.args.get('inStockOnly', 'false').lower() == 'true' or data.get('in_stock_only', False)
+                
                 inventory_service = InventoryService()
                 result = []
                 
@@ -367,14 +370,18 @@ class BatchInventoryRetrieval(Resource):
                     if inventory_items:
                         # Exact match found - return it
                         item = inventory_items[0]
-                        result.append({
+                        item_data = {
                             'sku': item.sku,
                             'quantityAvailable': item.quantity_available,
                             'quantityReserved': item.quantity_reserved,
                             'reorderPoint': item.reorder_level,
                             'reorderQuantity': item.max_stock - item.reorder_level if item.max_stock > item.reorder_level else 0,
                             'status': 'in_stock' if item.quantity_available > 0 else 'out_of_stock'
-                        })
+                        }
+                        
+                        # Apply filter if requested
+                        if not in_stock_only or item.quantity_available > 0:
+                            result.append(item_data)
                     else:
                         # No exact match - check if it's a base SKU by finding variants
                         # Base SKU pattern: BRAND-DEPT-CAT-NUM (e.g., ANT-WOM-CLO-001)
@@ -386,7 +393,7 @@ class BatchInventoryRetrieval(Resource):
                             total_available = sum(item.quantity_available for item in variant_items)
                             total_reserved = sum(item.quantity_reserved for item in variant_items)
                             
-                            result.append({
+                            item_data = {
                                 'sku': sku,
                                 'quantityAvailable': total_available,
                                 'quantityReserved': total_reserved,
@@ -394,9 +401,13 @@ class BatchInventoryRetrieval(Resource):
                                 'reorderQuantity': variant_items[0].max_stock - variant_items[0].reorder_level if variant_items and variant_items[0].max_stock > variant_items[0].reorder_level else 0,
                                 'status': 'in_stock' if total_available > 0 else 'out_of_stock',
                                 'variantCount': len(variant_items)
-                            })
-                        else:
-                            # No inventory found for this SKU
+                            }
+                            
+                            # Apply filter if requested
+                            if not in_stock_only or total_available > 0:
+                                result.append(item_data)
+                        elif not in_stock_only:
+                            # No inventory found for this SKU - only include if not filtering
                             result.append({
                                 'sku': sku,
                                 'quantityAvailable': 0,
