@@ -3,6 +3,7 @@ Messaging Provider Factory
 Architecture spec section 5.5.3
 
 Selects the appropriate provider based on environment configuration.
+Enables deployment flexibility across Azure hosting options.
 """
 import os
 import logging
@@ -20,6 +21,9 @@ def create_messaging_provider() -> MessagingProvider:
     """
     Create messaging provider based on MESSAGING_PROVIDER environment variable.
     
+    This factory pattern enables the same codebase to deploy across different
+    Azure hosting options without code changes, only configuration.
+    
     Environment Variables:
     - MESSAGING_PROVIDER: 'dapr', 'servicebus', or 'rabbitmq' (default: 'dapr')
     - For DaprProvider: DAPR_PUBSUB_NAME, DAPR_HTTP_PORT
@@ -32,10 +36,12 @@ def create_messaging_provider() -> MessagingProvider:
     Raises:
         ValueError: If provider type is invalid or required config is missing
     """
+    # Get provider type from environment, default to Dapr
     provider_type = os.getenv('MESSAGING_PROVIDER', 'dapr').lower()
     
     logger.info(f"Creating messaging provider: {provider_type}")
     
+    # Select provider based on configuration
     if provider_type == 'dapr':
         return _create_dapr_provider()
     elif provider_type == 'servicebus':
@@ -50,10 +56,15 @@ def create_messaging_provider() -> MessagingProvider:
 
 
 def _create_dapr_provider() -> DaprProvider:
-    """Create and configure Dapr provider."""
+    """
+    Create and configure Dapr provider.
+    Used for Azure Container Apps, AKS, and local Docker Compose.
+    """
+    # Get Dapr configuration from environment
     pubsub_name = os.getenv('DAPR_PUBSUB_NAME', 'inventory-pubsub')
     dapr_http_port = os.getenv('DAPR_HTTP_PORT')
     
+    # Convert port to integer if provided
     if dapr_http_port:
         dapr_http_port = int(dapr_http_port)
     
@@ -62,10 +73,15 @@ def _create_dapr_provider() -> DaprProvider:
 
 
 def _create_servicebus_provider() -> ServiceBusProvider:
-    """Create and configure Azure Service Bus provider."""
+    """
+    Create and configure Azure Service Bus provider.
+    Used for Azure App Service deployments without Dapr sidecar.
+    """
+    # Get Service Bus configuration - both required
     connection_string = os.getenv('SERVICEBUS_CONNECTION_STRING')
     topic_name = os.getenv('SERVICEBUS_TOPIC_NAME')
     
+    # Validate required configuration
     if not connection_string:
         raise ValueError(
             "SERVICEBUS_CONNECTION_STRING is required for ServiceBusProvider"
@@ -83,10 +99,15 @@ def _create_servicebus_provider() -> ServiceBusProvider:
 
 
 def _create_rabbitmq_provider() -> RabbitMQProvider:
-    """Create and configure RabbitMQ provider."""
+    """
+    Create and configure RabbitMQ provider.
+    Used for local development without Dapr sidecar.
+    """
+    # Get RabbitMQ configuration
     rabbitmq_url = os.getenv('RABBITMQ_URL')
-    exchange = os.getenv('RABBITMQ_EXCHANGE', 'inventory-events')
+    exchange = os.getenv('RABBITMQ_EXCHANGE', 'inventory-events')  # Optional, has default
     
+    # Validate required configuration
     if not rabbitmq_url:
         raise ValueError(
             "RABBITMQ_URL is required for RabbitMQProvider"

@@ -29,8 +29,8 @@ class DaprProvider(MessagingProvider):
         Initialize Dapr provider.
         
         Args:
-            pubsub_name: Name of Dapr pub/sub component
-            dapr_http_port: Dapr sidecar HTTP port (default from env)
+            pubsub_name: Name of Dapr pub/sub component (default: inventory-pubsub)
+            dapr_http_port: Dapr sidecar HTTP port (optional, defaults to 3504 from env)
         """
         self.pubsub_name = pubsub_name
         self.dapr_http_port = dapr_http_port
@@ -41,13 +41,16 @@ class DaprProvider(MessagingProvider):
         """
         Publish event via Dapr pub/sub.
         
+        Uses the Dapr SDK to publish events to the configured pub/sub component.
+        The Dapr sidecar handles routing to the actual message broker (RabbitMQ, etc.)
+        
         Args:
-            topic: Event topic name
-            event_data: CloudEvents payload
-            correlation_id: Correlation ID for tracing
+            topic: Event topic name (e.g., 'inventory.stock.updated')
+            event_data: CloudEvents-compliant payload with spec, type, data, etc.
+            correlation_id: Correlation ID for distributed tracing
             
         Returns:
-            bool: True if published successfully
+            bool: True if published successfully, False on error
         """
         try:
             # Create Dapr client with optional port override
@@ -55,11 +58,13 @@ class DaprProvider(MessagingProvider):
             if self.dapr_http_port:
                 client_kwargs['http_port'] = self.dapr_http_port
             
+            # Use context manager to ensure proper cleanup
             with DaprClient(**client_kwargs) as client:
+                # Publish event to Dapr pub/sub component
                 client.publish_event(
-                    pubsub_name=self.pubsub_name,
-                    topic_name=topic,
-                    data=json.dumps(event_data),
+                    pubsub_name=self.pubsub_name,  # Component name from config
+                    topic_name=topic,               # Event topic/routing key
+                    data=json.dumps(event_data),    # Serialized CloudEvents payload
                     data_content_type="application/json"
                 )
             
@@ -74,6 +79,7 @@ class DaprProvider(MessagingProvider):
             return True
             
         except Exception as e:
+            # Log error but don't raise - allows service to continue
             logger.error(
                 f"Failed to publish event via Dapr: {topic} - {str(e)}",
                 extra={
@@ -85,5 +91,8 @@ class DaprProvider(MessagingProvider):
             return False
     
     def close(self):
-        """Dapr client is context-managed, no cleanup needed."""
+        """
+        Dapr client is context-managed, no cleanup needed.
+        Connection is automatically closed when exiting the context manager.
+        """
         pass
