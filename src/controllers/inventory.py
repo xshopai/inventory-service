@@ -6,6 +6,7 @@ from flask import Blueprint, request, g, jsonify
 from flask_restx import Api, Resource, fields
 from marshmallow import ValidationError
 from src.services import InventoryService
+from src.middlewares.auth import require_admin
 from src.utils.schemas import (
     InventoryItemRequestSchema, InventoryItemResponseSchema,
     StockAdjustmentRequestSchema, StockMovementResponseSchema,
@@ -67,8 +68,9 @@ inventory_item_model, stock_adjustment_model = get_inventory_models(api)
 class InventoryList(Resource):
         @api.doc('list_inventory')
         @api.marshal_list_with(inventory_item_model)
+        @require_admin
         def get(self):
-            """Get all inventory items with optional filtering"""
+            """Get all inventory items with optional filtering (Admin only)"""
             try:
                 # Validate query parameters
                 search_params = search_schema.load(request.args.to_dict())
@@ -97,8 +99,9 @@ class InventoryList(Resource):
 
         @api.doc('create_inventory')
         @api.expect(inventory_item_model)
+        @require_admin
         def post(self):
-            """Create new inventory item"""
+            """Create new inventory item (Admin only)"""
             try:
                 # Validate request data
                 data = inventory_request_schema.load(request.json)
@@ -202,8 +205,9 @@ class InventoryItem(Resource):
         @api.doc('update_inventory')
         @api.expect(inventory_item_model)
         @api.marshal_with(inventory_item_model)
+        @require_admin
         def put(self, identifier):
-            """Update inventory item by SKU"""
+            """Update inventory item by SKU (Admin only)"""
             try:
                 # Validate request data
                 data = inventory_request_schema.load(request.json)
@@ -234,8 +238,9 @@ class InventoryItem(Resource):
                 return {'error': 'Internal server error'}, 500
 
         @api.doc('delete_inventory')
+        @require_admin
         def delete(self, identifier):
-            """Delete inventory item"""
+            """Delete inventory item (Admin only)"""
             try:
                 inventory_service = InventoryService()
                 success = inventory_service.delete_inventory_item(identifier)
@@ -253,8 +258,9 @@ class InventoryItem(Resource):
 class StockAdjustment(Resource):
         @api.doc('adjust_stock')
         @api.expect(stock_adjustment_model)
+        @require_admin
         def post(self, identifier):
-            """Adjust stock for inventory item"""
+            """Adjust stock for inventory item (Admin only)"""
             try:
                 # Validate request data
                 data = stock_adjustment_schema.load(request.json)
