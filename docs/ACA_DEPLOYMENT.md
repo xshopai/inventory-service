@@ -35,13 +35,11 @@ az account show
 RESOURCE_GROUP="rg-xshopai-aca"
 LOCATION="swedencentral"
 
-# Create resource group (skip if already exists for other services)
+# Create resource group (idempotent - safe to run if already exists)
 az group create \
   --name $RESOURCE_GROUP \
   --location $LOCATION
 ```
-
-> **Note**: This resource group and all resources within it are specific to Azure Container Apps deployment. For AKS deployment, use `rg-xshopai-aks` with separate resources.
 
 ### Step 3: Create Azure Container Registry
 
@@ -49,7 +47,9 @@ az group create \
 # Set ACR name (ACA-specific, must be globally unique)
 ACR_NAME="acrxshopaiaca"
 
-# Create container registry
+# Create container registry (skip if already created by another service)
+# This command is NOT idempotent - it will fail if ACR already exists
+# You can safely ignore "already exists" errors
 az acr create \
   --resource-group $RESOURCE_GROUP \
   --name $ACR_NAME \
@@ -117,28 +117,59 @@ AI_KEY=$(az monitor app-insights component show \
 echo "App Insights Key: $AI_KEY"
 ```
 
-### Step 7: Create Container Apps Environment
+### Step 7: Create Log Analytics Workspace
+
+```bash
+# Set Log Analytics workspace name (shared across all xshopai services)
+LOG_ANALYTICS_WORKSPACE="law-xshopai-aca"
+
+# Create Log Analytics workspace (skip if already exists)
+az monitor log-analytics workspace create \
+  --resource-group $RESOURCE_GROUP \
+  --workspace-name $LOG_ANALYTICS_WORKSPACE \
+  --location $LOCATION
+
+# Get workspace ID and key (needed for Container Apps Environment)
+LOG_ANALYTICS_WORKSPACE_ID=$(az monitor log-analytics workspace show \
+  --resource-group $RESOURCE_GROUP \
+  --workspace-name $LOG_ANALYTICS_WORKSPACE \
+  --query customerId \
+  --output tsv)
+
+LOG_ANALYTICS_KEY=$(az monitor log-analytics workspace get-shared-keys \
+  --resource-group $RESOURCE_GROUP \
+  --workspace-name $LOG_ANALYTICS_WORKSPACE \
+  --query primarySharedKey \
+  --output tsv)
+
+echo "Log Analytics Workspace ID: $LOG_ANALYTICS_WORKSPACE_ID"
+```
+
+### Step 8: Create Container Apps Environment
 
 ```bash
 # Set environment name (ACA-specific)
 ENVIRONMENT_NAME="cae-xshopai-aca"
 
 # Create Container Apps environment with Dapr enabled
+# Skip if already created by another service - will fail with "already exists" error
 az containerapp env create \
   --name $ENVIRONMENT_NAME \
   --resource-group $RESOURCE_GROUP \
   --location $LOCATION \
   --dapr-instrumentation-key $AI_KEY \
+  --logs-workspace-id $LOG_ANALYTICS_WORKSPACE_ID \
+  --logs-workspace-key $LOG_ANALYTICS_KEY \
   --enable-workload-profiles false
 ```
 
-### Step 8: Create Azure Service Bus (for messaging)
+### Step 9: Create Azure Service Bus (for messaging)
 
 ```bash
 # Set Service Bus namespace (ACA-specific)
 SB_NAMESPACE="sb-xshopai-aca"
 
-# Create Service Bus namespace
+# Create Service Bus namespace (skip if already exists)
 az servicebus namespace create \
   --name $SB_NAMESPACE \
   --resource-group $RESOURCE_GROUP \
@@ -160,7 +191,7 @@ SB_CONNECTION=$(az servicebus namespace authorization-rule keys list \
   --output tsv)
 ```
 
-### Step 9: Create Azure Database for MySQL
+### Step 10: Create Azure Database for MySQL
 
 ```bash
 # Set database server name (ACA-specific, can host multiple databases for different services)
@@ -198,7 +229,7 @@ DB_CONNECTION="mysql+pymysql://$DB_USERNAME:$DB_PASSWORD@$DB_SERVER.mysql.databa
 
 > **Important**: Azure MySQL Flexible Server requires SSL connections by default. The `ssl_ca` parameter points to the DigiCert Global Root G2 certificate, which is downloaded into the Docker image during build.
 
-### Step 10: Create Dapr Component for Azure Service Bus
+### Step 11: Create Dapr Component for Azure Service Bus
 
 The local `.dapr/components/event-bus.yaml` is configured for RabbitMQ. For Azure Container Apps, create an Azure Service Bus component in the same folder:
 
@@ -224,9 +255,9 @@ cat .dapr/components/dapr-servicebus-component.yaml
 >
 > - Local development uses RabbitMQ (`.dapr/components/event-bus.yaml`)
 > - Azure Container Apps uses Azure Service Bus (`.dapr/components/dapr-servicebus-component.yaml`)
-> - The `$SB_CONNECTION` variable was set in Step 8
+> - The `$SB_CONNECTION` variable was set in Step 9
 
-### Step 11: Deploy Container App
+### Step 12: Deploy Container App
 
 ```bash
 # Set app name
@@ -264,10 +295,10 @@ az containerapp create \
     "WEB_BFF_TOKEN=<your-web-bff-token>"
 ```
 
-### Step 12: Configure Dapr Component in Container Apps
+### Step 13: Configure Dapr Component in Container Apps
 
 ```bash
-# Create Dapr pub/sub component (using the file created in Step 10)
+# Create Dapr pub/sub component (using the file created in Step 11)
 az containerapp env dapr-component set \
   --name $ENVIRONMENT_NAME \
   --resource-group $RESOURCE_GROUP \
@@ -275,7 +306,7 @@ az containerapp env dapr-component set \
   --yaml .dapr/components/dapr-servicebus-component.yaml
 ```
 
-### Step 13: Run Database Migrations
+### Step 14: Run Database Migrations
 
 ```bash
 # Get container app URL
@@ -297,7 +328,7 @@ flask db upgrade
 
 **Alternative:** Run migrations as a Job before deploying the app.
 
-### Step 14: Verify Deployment
+### Step 15: Verify Deployment
 
 ```bash
 # Check app status

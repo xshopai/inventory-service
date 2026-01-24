@@ -86,8 +86,9 @@ LOG_LEVEL=DEBUG
 
 > **Note**:
 >
-> - When using Dapr mode, database credentials and JWT secret are retrieved from the Dapr secret store (configured in `.dapr/secrets.json`)
+> - When using Dapr mode, `DATABASE_URL` and `JWT_SECRET` are retrieved from the Dapr secret store (configured in `.dapr/secrets.json`)
 > - The Dapr sidecar handles RabbitMQ connections using the configuration in `.dapr/components/event-bus.yaml`
+> - If Dapr secret store fails, the service falls back to environment variables
 
 ---
 
