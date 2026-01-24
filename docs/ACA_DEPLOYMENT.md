@@ -31,21 +31,23 @@ az account show
 ### Step 2: Create Resource Group
 
 ```bash
-# Set variables
-RESOURCE_GROUP="rg-inventory-service"
-LOCATION="eastus"
+# Set variables (shared across all xshopai services)
+RESOURCE_GROUP="rg-xshopai-aca"
+LOCATION="swedencentral"
 
-# Create resource group
+# Create resource group (skip if already exists for other services)
 az group create \
   --name $RESOURCE_GROUP \
   --location $LOCATION
 ```
 
+> **Note**: This resource group and all resources within it are specific to Azure Container Apps deployment. For AKS deployment, use `rg-xshopai-aks` with separate resources.
+
 ### Step 3: Create Azure Container Registry
 
 ```bash
-# Set ACR name (must be globally unique)
-ACR_NAME="acrinventoryservice"
+# Set ACR name (ACA-specific, must be globally unique)
+ACR_NAME="acrxshopaiaca"
 
 # Create container registry
 az acr create \
@@ -78,26 +80,63 @@ docker push $ACR_LOGIN_SERVER/inventory-service:latest
 az acr repository list --name $ACR_NAME --output table
 ```
 
-### Step 5: Create Container Apps Environment
+### Step 5: Register Resource Providers
 
 ```bash
-# Set environment name
-ENVIRONMENT_NAME="env-inventory-service"
+# Register required resource providers (one-time per subscription)
+az provider register --namespace microsoft.operationalinsights --wait
+az provider register --namespace microsoft.insights --wait
+az provider register --namespace Microsoft.App --wait
+az provider register --namespace Microsoft.ServiceBus --wait
+
+# Verify registration status
+az provider show --namespace microsoft.operationalinsights --query "registrationState" --output tsv
+az provider show --namespace microsoft.insights --query "registrationState" --output tsv
+```
+
+> **Note**: Provider registration can take 1-2 minutes. The `--wait` flag ensures the command waits for registration to complete.
+
+### Step 6: Create Application Insights
+
+```bash
+# Create Application Insights (ACA-specific)
+AI_NAME="ai-xshopai-aca"
+
+az monitor app-insights component create \
+  --app $AI_NAME \
+  --location $LOCATION \
+  --resource-group $RESOURCE_GROUP
+
+# Get instrumentation key (needed for Container Apps Environment)
+AI_KEY=$(az monitor app-insights component show \
+  --app $AI_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --query instrumentationKey \
+  --output tsv)
+
+echo "App Insights Key: $AI_KEY"
+```
+
+### Step 7: Create Container Apps Environment
+
+```bash
+# Set environment name (ACA-specific)
+ENVIRONMENT_NAME="cae-xshopai-aca"
 
 # Create Container Apps environment with Dapr enabled
 az containerapp env create \
   --name $ENVIRONMENT_NAME \
   --resource-group $RESOURCE_GROUP \
   --location $LOCATION \
-  --dapr-instrumentation-key "<app-insights-key>" \
+  --dapr-instrumentation-key $AI_KEY \
   --enable-workload-profiles false
 ```
 
-### Step 6: Create Azure Service Bus (for messaging)
+### Step 8: Create Azure Service Bus (for messaging)
 
 ```bash
-# Set Service Bus namespace
-SB_NAMESPACE="sb-inventory-service"
+# Set Service Bus namespace (ACA-specific)
+SB_NAMESPACE="sb-xshopai-aca"
 
 # Create Service Bus namespace
 az servicebus namespace create \
@@ -121,14 +160,14 @@ SB_CONNECTION=$(az servicebus namespace authorization-rule keys list \
   --output tsv)
 ```
 
-### Step 7: Create Azure Database for MySQL
+### Step 9: Create Azure Database for MySQL
 
 ```bash
-# Set database server name
-DB_SERVER="mysql-inventory-service"
+# Set database server name (ACA-specific, can host multiple databases for different services)
+DB_SERVER="mysql-xshopai-aca"
 DB_NAME="inventory_service_db"
-DB_USERNAME="admin"
-DB_PASSWORD="<secure-password>"
+DB_USERNAME="xshopaiadmin"
+DB_PASSWORD="<your-secure-password>"  # Use a strong password with special characters
 
 # Create MySQL server
 az mysql flexible-server create \
@@ -139,7 +178,7 @@ az mysql flexible-server create \
   --admin-password $DB_PASSWORD \
   --sku-name Standard_B1ms \
   --tier Burstable \
-  --version 8.0 \
+  --version 8.0.21 \
   --storage-size 32 \
   --public-access 0.0.0.0
 
@@ -149,28 +188,45 @@ az mysql flexible-server db create \
   --server-name $DB_SERVER \
   --database-name $DB_NAME
 
-# Get connection string
-DB_CONNECTION="mysql+pymysql://$DB_USERNAME:$DB_PASSWORD@$DB_SERVER.mysql.database.azure.com:3306/$DB_NAME"
+# Get connection string (with SSL for Azure MySQL)
+# Note: The ssl_ca path must match the certificate location in the Docker image
+# IMPORTANT: If your password contains special characters (like @, #, $), URL-encode them:
+#   @ -> %40, # -> %23, $ -> %24, etc.
+# Example: password "p@ss" becomes "p%40ss" in the connection string
+DB_CONNECTION="mysql+pymysql://$DB_USERNAME:$DB_PASSWORD@$DB_SERVER.mysql.database.azure.com:3306/$DB_NAME?ssl_ca=/etc/ssl/certs/DigiCertGlobalRootG2.crt.pem"
 ```
 
-### Step 8: Create Dapr Component for Service Bus
+> **Important**: Azure MySQL Flexible Server requires SSL connections by default. The `ssl_ca` parameter points to the DigiCert Global Root G2 certificate, which is downloaded into the Docker image during build.
 
-Create file `dapr-servicebus-component.yaml`:
+### Step 10: Create Dapr Component for Azure Service Bus
 
-```yaml
+The local `.dapr/components/event-bus.yaml` is configured for RabbitMQ. For Azure Container Apps, create an Azure Service Bus component in the same folder:
+
+```bash
+# Create Azure Service Bus component file in .dapr/components folder
+cat > .dapr/components/dapr-servicebus-component.yaml << EOF
 componentType: pubsub.azure.servicebus.topics
 version: v1
 metadata:
   - name: connectionString
-    value: "<service-bus-connection-string>"
+    value: '$SB_CONNECTION'
   - name: consumerID
     value: inventory-service
-secrets: []
 scopes:
   - inventory-service
+EOF
+
+# Verify the file
+cat .dapr/components/dapr-servicebus-component.yaml
 ```
 
-### Step 9: Deploy Container App
+> **Note**:
+>
+> - Local development uses RabbitMQ (`.dapr/components/event-bus.yaml`)
+> - Azure Container Apps uses Azure Service Bus (`.dapr/components/dapr-servicebus-component.yaml`)
+> - The `$SB_CONNECTION` variable was set in Step 8
+
+### Step 11: Deploy Container App
 
 ```bash
 # Set app name
@@ -202,24 +258,24 @@ az containerapp create \
     "DATABASE_URL=$DB_CONNECTION" \
     "MESSAGING_PROVIDER=dapr" \
     "DAPR_PUBSUB_NAME=inventory-pubsub" \
-    "PRODUCT_SERVICE_TOKEN=<token>" \
-    "ORDER_SERVICE_TOKEN=<token>" \
-    "CART_SERVICE_TOKEN=<token>" \
-    "WEB_BFF_TOKEN=<token>"
+    "PRODUCT_SERVICE_TOKEN=<your-product-service-token>" \
+    "ORDER_SERVICE_TOKEN=<your-order-service-token>" \
+    "CART_SERVICE_TOKEN=<your-cart-service-token>" \
+    "WEB_BFF_TOKEN=<your-web-bff-token>"
 ```
 
-### Step 10: Configure Dapr Component in Container Apps
+### Step 12: Configure Dapr Component in Container Apps
 
 ```bash
-# Create Dapr pub/sub component
+# Create Dapr pub/sub component (using the file created in Step 10)
 az containerapp env dapr-component set \
   --name $ENVIRONMENT_NAME \
   --resource-group $RESOURCE_GROUP \
   --dapr-component-name inventory-pubsub \
-  --yaml dapr-servicebus-component.yaml
+  --yaml .dapr/components/dapr-servicebus-component.yaml
 ```
 
-### Step 11: Run Database Migrations
+### Step 13: Run Database Migrations
 
 ```bash
 # Get container app URL
@@ -241,7 +297,7 @@ flask db upgrade
 
 **Alternative:** Run migrations as a Job before deploying the app.
 
-### Step 12: Verify Deployment
+### Step 14: Verify Deployment
 
 ```bash
 # Check app status
@@ -264,8 +320,8 @@ curl https://$APP_URL/health
 ### Using Azure Key Vault
 
 ```bash
-# Create Key Vault
-KV_NAME="kv-inventory-service"
+# Create Key Vault (ACA-specific)
+KV_NAME="kv-xshopai-aca"
 
 az keyvault create \
   --name $KV_NAME \
@@ -321,171 +377,29 @@ az containerapp logs show \
 
 ### Application Insights Integration
 
+Application Insights was created in Step 5. To add it to the container app's environment variables:
+
 ```bash
-# Create Application Insights
-AI_NAME="ai-inventory-service"
-
-az monitor app-insights component create \
-  --app $AI_NAME \
-  --location $LOCATION \
-  --resource-group $RESOURCE_GROUP
-
-# Get instrumentation key
-AI_KEY=$(az monitor app-insights component show \
-  --app $AI_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --query instrumentationKey \
-  --output tsv)
-
-# Update container app with App Insights
+# Update container app with App Insights connection string
 az containerapp update \
   --name $APP_NAME \
   --resource-group $RESOURCE_GROUP \
   --set-env-vars "APPLICATIONINSIGHTS_CONNECTION_STRING=InstrumentationKey=$AI_KEY"
 ```
 
----
-
-## Scaling Configuration
-
-### Manual Scaling
-
-```bash
-# Scale to specific replica count
-az containerapp update \
-  --name $APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --min-replicas 2 \
-  --max-replicas 10
-```
-
-### Auto-Scaling Rules
-
-```bash
-# Scale based on HTTP requests
-az containerapp update \
-  --name $APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --scale-rule-name http-scaling \
-  --scale-rule-type http \
-  --scale-rule-http-concurrency 100
-
-# Scale based on CPU
-az containerapp update \
-  --name $APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --scale-rule-name cpu-scaling \
-  --scale-rule-type cpu \
-  --scale-rule-metadata "type=Utilization" "value=70"
-```
-
----
-
-## Update Deployment
-
-### Deploy New Version
-
-```bash
-# Build new image with version tag
-VERSION="1.1.0"
-docker build -t inventory-service:$VERSION .
-docker tag inventory-service:$VERSION $ACR_LOGIN_SERVER/inventory-service:$VERSION
-docker push $ACR_LOGIN_SERVER/inventory-service:$VERSION
-
-# Update container app
-az containerapp update \
-  --name $APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --image $ACR_LOGIN_SERVER/inventory-service:$VERSION
-
-# Verify deployment
-az containerapp revision list \
-  --name $APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --output table
-```
-
-### Blue-Green Deployment
-
-```bash
-# Create new revision without traffic
-az containerapp update \
-  --name $APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --image $ACR_LOGIN_SERVER/inventory-service:$VERSION \
-  --revision-suffix v2
-
-# Split traffic (90% old, 10% new)
-az containerapp ingress traffic set \
-  --name $APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --revision-weight latest=10 previous=90
-
-# After validation, shift all traffic to new version
-az containerapp ingress traffic set \
-  --name $APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --revision-weight latest=100
-```
-
----
-
 ## Cleanup Resources
 
 ```bash
-# Delete container app
+# Delete container app (safe - only removes inventory-service)
 az containerapp delete \
   --name $APP_NAME \
   --resource-group $RESOURCE_GROUP \
   --yes
 
-# Delete entire resource group (WARNING: deletes everything)
-az group delete \
-  --name $RESOURCE_GROUP \
-  --yes
+# Delete entire ACA deployment (all xshopai services in ACA)
+# az group delete --name $RESOURCE_GROUP --yes
 ```
 
----
-
-## Quick Reference
-
-```bash
-# Check app status
-az containerapp show --name inventory-service --resource-group rg-inventory-service
-
-# View logs
-az containerapp logs show --name inventory-service --resource-group rg-inventory-service --follow
-
-# Update environment variable
-az containerapp update --name inventory-service --resource-group rg-inventory-service \
-  --set-env-vars "LOG_LEVEL=INFO"
-
-# Scale replicas
-az containerapp update --name inventory-service --resource-group rg-inventory-service \
-  --min-replicas 2 --max-replicas 10
-
-# Get app URL
-az containerapp show --name inventory-service --resource-group rg-inventory-service \
-  --query properties.configuration.ingress.fqdn --output tsv
 ```
 
----
-
-## Best Practices
-
-✅ **Use Azure Key Vault** for secrets (database passwords, JWT secrets, service tokens)  
-✅ **Enable Application Insights** for monitoring and diagnostics  
-✅ **Configure health probes** for automatic restart of unhealthy containers  
-✅ **Use managed identity** instead of connection strings where possible  
-✅ **Enable auto-scaling** based on HTTP traffic and CPU metrics  
-✅ **Use revision labels** for blue-green deployments  
-✅ **Configure dead letter queues** in Dapr components  
-✅ **Set up alerts** for errors and performance issues  
-
----
-
-## Next Steps
-
-- **Kubernetes Deployment**: See [AKS_DEPLOYMENT.md](AKS_DEPLOYMENT.md)
-- **Local Development**: See [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md)
-- **Architecture**: See [ARCHITECTURE.md](ARCHITECTURE.md) for system design
+```

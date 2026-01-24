@@ -12,14 +12,17 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    FLASK_APP=app.py
+    FLASK_APP=run.py
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies and Azure MySQL SSL certificate
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     curl \
+    wget \
+    ca-certificates \
+    && wget --no-check-certificate https://dl.cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem -O /etc/ssl/certs/DigiCertGlobalRootG2.crt.pem \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -53,14 +56,14 @@ RUN mkdir -p logs && chown -R inventoryuser:appgroup logs
 USER inventoryuser
 
 # Expose port
-EXPOSE 8005
+EXPOSE 8004
 
 # Health check (using Python to avoid curl dependency)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8005/readiness')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8004/readiness')" || exit 1
 
 # Start development server with auto-reload
-CMD ["flask", "run", "--host", "0.0.0.0", "--port", "8005", "--reload"]
+CMD ["flask", "run", "--host", "0.0.0.0", "--port", "8004", "--reload"]
 
 # -----------------------------------------------------------------------------
 # Production stage - Optimized for production deployment
@@ -82,14 +85,14 @@ RUN mkdir -p logs && chown -R inventoryuser:appgroup logs
 USER inventoryuser
 
 # Expose port
-EXPOSE 8005
+EXPOSE 8004
 
 # Health check (using Python to avoid curl dependency)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8005/readiness')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8004/readiness')" || exit 1
 
 # Start production server with gunicorn (workers configurable via WORKERS env var, default: 4)
-CMD sh -c "gunicorn --bind 0.0.0.0:8005 --workers ${WORKERS:-4} --timeout 120 app:app"
+CMD sh -c "gunicorn --bind 0.0.0.0:8004 --workers ${WORKERS:-4} --timeout 120 run:app"
 
 # Labels for better image management and security scanning
 LABEL maintainer="xshopai Team"

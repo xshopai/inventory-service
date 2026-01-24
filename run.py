@@ -22,6 +22,11 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+# Create Flask application for gunicorn
+# gunicorn will import this as: run:app
+env = os.environ.get('FLASK_ENV', 'production')
+app = create_app(env)
+
 
 def main():
     """Main application entry point."""
