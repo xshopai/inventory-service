@@ -66,7 +66,7 @@ def readiness():
         }), 503
 
 
-@operational_hp.route('/liveness', methods=['GET'])
+@operational_hp.route('/health/live', methods=['GET'])
 def liveness():
     """Liveness probe - checks if service is alive and responsive"""
     try:

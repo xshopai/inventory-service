@@ -20,22 +20,14 @@ For production-like local development with Dapr, see [Local Development with Dap
 
 ## Step 1: Configure Environment for Non-Dapr Mode
 
-The repository includes pre-configured environment files:
-
-- **`.env.local`** - For local development without Dapr (direct RabbitMQ connection)
-- **`.env.dapr`** - For local development with Dapr sidecar
-
 Copy the local environment template to `.env`:
 
 ```bash
-# On Linux/Mac:
+# On Linux / Mac / Bash:
 cp .env.local .env
 
 # On Windows (PowerShell):
 Copy-Item .env.local .env
-
-# On Windows (Command Prompt):
-copy .env.local .env
 ```
 
 The `.env.local` file contains:
@@ -116,11 +108,14 @@ Expected output:
 ### Health Check
 
 ```bash
-# Liveness check
+# Basic health check
 curl http://localhost:8004/health
 
 # Readiness check (verifies database connection)
 curl http://localhost:8004/health/ready
+
+# Liveness check
+curl http://localhost:8004/health/live
 ```
 
 ## Step 4: Run Tests

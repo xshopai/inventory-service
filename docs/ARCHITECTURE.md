@@ -502,8 +502,9 @@ Database connection is configured via the `DATABASE_URL` environment variable.
 
 | Method   | Endpoint                                   | Description                   | Auth          |
 | -------- | ------------------------------------------ | ----------------------------- | ------------- |
-| `GET`    | `/health`                                  | Liveness probe                | None          |
+| `GET`    | `/health`                                  | Basic health check            | None          |
 | `GET`    | `/health/ready`                            | Readiness probe               | None          |
+| `GET`    | `/health/live`                             | Liveness probe                | None          |
 | `GET`    | `/metrics`                                 | Prometheus metrics            | None          |
 | `GET`    | `/api/inventory/stock/{sku}`               | Query stock for single SKU    | Service Token |
 | `POST`   | `/api/inventory/stock/batch`               | Query stock for multiple SKUs | Service Token |
@@ -1027,11 +1028,11 @@ All API errors return a consistent JSON structure:
 
 **Quick Reference:**
 
-| Auth Type     | Header                        | Used By                                       |
-| ------------- | ----------------------------- | --------------------------------------------- |
-| Service Token | `X-Service-Token: <token>`    | Product Service, Order Service                |
-| Admin JWT     | `Authorization: Bearer <jwt>` | Admin UI                                      |
-| None          | -                             | Health endpoints (`/health`, `/health/ready`) |
+| Auth Type     | Header                        | Used By                                                       |
+| ------------- | ----------------------------- | ------------------------------------------------------------- |
+| Service Token | `X-Service-Token: <token>`    | Product Service, Order Service                                |
+| Admin JWT     | `Authorization: Bearer <jwt>` | Admin UI                                                      |
+| None          | -                             | Health endpoints (`/health`, `/health/ready`, `/health/live`) |
 
 See Section 10.1.3 for service token configuration and Section 10.1.4 for admin JWT validation.
 

@@ -69,12 +69,15 @@ pip install -r requirements-dev.txt
 ### Option A: Using Docker Compose (Recommended)
 
 ```bash
-# Create the Docker network (first time only)
-docker network create xshopai-network
+# Create the Docker network (only needed once across all xshopai services)
+# This command will fail silently if the network already exists
+docker network create xshopai-network 2>/dev/null || true
 
 # Start MySQL using docker-compose
 docker-compose up -d inventory-mysql
 ```
+
+> **Note:** If you see "network with name xshopai-network already exists", that's fine - it means the network was already created by another service.
 
 This uses the pre-configured settings from `docker-compose.yml`:
 
@@ -153,32 +156,12 @@ docker ps | grep rabbitmq
 
 ## Step 6: Configure Environment Variables
 
-Edit the `.env` file with your local settings:
+Environment configuration depends on your development mode. Continue to one of the following guides:
 
-```bash
-# Flask Configuration
-FLASK_ENV=development
-SECRET_KEY=your-dev-secret-key-change-me
+- **[Local Development (without Dapr)](LOCAL_DEVELOPMENT.md)** - Uses `.env.local` template with direct MySQL/RabbitMQ connections
+- **[Local Development with Dapr](LOCAL_DEVELOPMENT_DAPR.md)** - Uses `.env.dapr` template with Dapr sidecar for messaging
 
-# Database Configuration
-DATABASE_URL=mysql+pymysql://admin:admin123@localhost:3306/inventory_service_db
-
-# Service Tokens - Generate with: openssl rand -hex 12
-PRODUCT_SERVICE_TOKEN=svc-product-<generate-24-chars>
-ORDER_SERVICE_TOKEN=svc-order-<generate-24-chars>
-CART_SERVICE_TOKEN=svc-cart-<generate-24-chars>
-WEB_BFF_TOKEN=svc-webbff-<generate-24-chars>
-
-# Logging
-LOG_LEVEL=DEBUG
-```
-
-### Generate Secure Tokens
-
-```bash
-# Run this command 4 times for each service token
-openssl rand -hex 12
-```
+Each guide includes the specific environment setup for that mode.
 
 ---
 

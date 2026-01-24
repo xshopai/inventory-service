@@ -594,10 +594,11 @@ The system shall publish `inventory.stock.updated` event after admin create, upd
 
 ### 6.4 Observability
 
-| Requirement                                         | Priority |
-| --------------------------------------------------- | -------- |
-| Health check endpoints (`/health`, `/health/ready`) | Critical |
-| Structured JSON logging with correlation IDs        | High     |
-| Log stock changes with before/after values          | High     |
+| Requirement                                                         | Priority |
+| ------------------------------------------------------------------- | -------- |
+| Health check endpoints (`/health`, `/health/ready`, `/health/live`) | Critical |
+| Structured JSON logging with correlation IDs                        | High     |
+| Log stock changes with before/after values                          | High     |
+| Prometheus metrics endpoint (`/metrics`)                            | High     |
 
 ---

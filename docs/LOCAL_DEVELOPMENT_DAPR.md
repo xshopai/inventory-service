@@ -50,22 +50,14 @@ You should see these containers:
 
 ## Step 2: Configure Environment for Dapr Mode
 
-The repository includes pre-configured environment files:
-
-- **`.env.local`** - For local development without Dapr
-- **`.env.dapr`** - For local development with Dapr sidecar (this guide)
-
 Copy the Dapr environment template to `.env`:
 
 ```bash
-# On Linux/Mac:
+# On Linux / Mac / Bash:
 cp .env.dapr .env
 
 # On Windows (PowerShell):
 Copy-Item .env.dapr .env
-
-# On Windows (Command Prompt):
-copy .env.dapr .env
 ```
 
 The `.env.dapr` file contains:
