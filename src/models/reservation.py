@@ -29,20 +29,12 @@ class Reservation(db.Model):
         """Check if reservation has expired"""
         return datetime.utcnow() > self.expires_at
     
-    @property
-    def product_id(self):
-        """Get product_id from associated inventory item"""
-        from src.models.inventory_item import InventoryItem
-        item = InventoryItem.query.filter_by(sku=self.sku).first()
-        return item.product_id if item else None
-    
     def to_dict(self):
         """Convert to dictionary"""
         return {
             'id': self.id,
             'order_id': self.order_id,
             'sku': self.sku,
-            'product_id': self.product_id,  # Add product_id property
             'quantity': self.quantity,
             'status': self.status.value,
             'expires_at': self.expires_at.isoformat(),

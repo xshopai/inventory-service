@@ -1564,23 +1564,22 @@ flowchart TB
 
 ### 6.1 Environment Variables
 
-| Variable                  | Description                                | Required | Default            |
-| ------------------------- | ------------------------------------------ | -------- | ------------------ |
-| `PORT`                    | Service port                               | No       | `8004`             |
-| `FLASK_ENV`               | Flask environment                          | No       | `development`      |
-| `FLASK_DEBUG`             | Enable debug mode                          | No       | `false`            |
-| `SECRET_KEY`              | Flask secret key                           | Yes      | -                  |
-| `DATABASE_URL`            | PostgreSQL connection string               | Yes      | -                  |
-| `REDIS_URL`               | Redis connection string                    | Yes      | -                  |
-| `JWT_SECRET_KEY`          | JWT validation secret                      | Yes      | -                  |
-| `JWT_ALGORITHM`           | JWT algorithm                              | No       | `HS256`            |
-| `MESSAGING_PROVIDER`      | Provider: `dapr`, `servicebus`, `rabbitmq` | No       | `dapr`             |
-| `LOG_LEVEL`               | Logging level                              | No       | `INFO`             |
-| `RESERVATION_TTL_MINUTES` | Default reservation expiry                 | No       | `15`               |
-| `LOW_STOCK_THRESHOLD`     | Default low stock threshold                | No       | `10`               |
-| `DAPR_HTTP_PORT`          | Dapr sidecar HTTP port                     | No       | `3504`             |
-| `DAPR_PUBSUB_NAME`        | Dapr pub/sub component name                | No       | `inventory-pubsub` |
-| `CORS_ORIGINS`            | Allowed CORS origins (comma-separated)     | No       | `*`                |
+| Variable              | Description                                | Required | Default            |
+| --------------------- | ------------------------------------------ | -------- | ------------------ |
+| `PORT`                | Service port                               | No       | `8004`             |
+| `FLASK_ENV`           | Flask environment                          | No       | `development`      |
+| `FLASK_DEBUG`         | Enable debug mode                          | No       | `false`            |
+| `SECRET_KEY`          | Flask secret key                           | Yes      | -                  |
+| `DATABASE_URL`        | PostgreSQL connection string               | Yes      | -                  |
+| `REDIS_URL`           | Redis connection string                    | Yes      | -                  |
+| `JWT_SECRET_KEY`      | JWT validation secret                      | Yes      | -                  |
+| `JWT_ALGORITHM`       | JWT algorithm                              | No       | `HS256`            |
+| `MESSAGING_PROVIDER`  | Provider: `dapr`, `servicebus`, `rabbitmq` | No       | `dapr`             |
+| `LOG_LEVEL`           | Logging level                              | No       | `INFO`             |
+| `LOW_STOCK_THRESHOLD` | Default low stock threshold                | No       | `10`               |
+| `DAPR_HTTP_PORT`      | Dapr sidecar HTTP port                     | No       | `3504`             |
+| `DAPR_PUBSUB_NAME`    | Dapr pub/sub component name                | No       | `inventory-pubsub` |
+| `CORS_ORIGINS`        | Allowed CORS origins (comma-separated)     | No       | `*`                |
 
 #### Service Token Configuration
 

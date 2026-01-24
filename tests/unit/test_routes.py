@@ -3,7 +3,7 @@
 Simple script to test all health endpoints
 """
 
-from src.api.main import create_app
+from src import create_app
 
 def test_routes():
     app = create_app()

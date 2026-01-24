@@ -38,9 +38,9 @@ def get_engine_url():
 # target_metadata = mymodel.Base.metadata
 
 # Import all models to ensure they're registered with SQLAlchemy
-from src.shared.models.inventory_item import InventoryItem
-from src.shared.models.reservation import Reservation
-from src.shared.models.stock_movement import StockMovement
+from src.models.inventory_item import InventoryItem
+from src.models.reservation import Reservation
+from src.models.stock_movement import StockMovement
 
 config.set_main_option('sqlalchemy.url', get_engine_url())
 target_db = current_app.extensions['migrate'].db

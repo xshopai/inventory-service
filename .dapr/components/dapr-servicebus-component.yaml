@@ -1,0 +1,10 @@
+componentType: pubsub.azure.servicebus.topics
+version: v1
+metadata:
+  - name: connectionString
+    value: '<your-service-bus-connection-string>'
+  - name: consumerID
+    value: inventory-service
+secrets: []
+scopes:
+  - inventory-service

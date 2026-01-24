@@ -6,12 +6,17 @@ from flask import Blueprint, request, g, jsonify
 from flask_restx import Api, Resource, fields
 from marshmallow import ValidationError
 from src.services import InventoryService
+from src.middlewares.auth import require_admin, require_service_token
 from src.utils.schemas import (
     InventoryItemRequestSchema, InventoryItemResponseSchema,
     StockAdjustmentRequestSchema, StockMovementResponseSchema,
     InventorySearchSchema, BulkOperationRequestSchema
 )
 from src.utils.event_publisher import event_publisher
+from src.utils.error_codes import (
+    sku_not_found_error, sku_already_exists_error, 
+    validation_error, create_error_response, ErrorCode
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -21,8 +26,9 @@ inventory_bp = Blueprint('inventory', __name__)
 api = Api(inventory_bp, version='1.0', title='Inventory API',
           description='Inventory management endpoints', doc='/docs/')
 
-# Create namespace
+# Create namespaces
 inventory_ns = api.namespace('inventory', description='Inventory operations')
+stock_ns = api.namespace('inventory/stock', description='Stock query operations')
 
 # Initialize schemas
 inventory_request_schema = InventoryItemRequestSchema()
@@ -67,8 +73,9 @@ inventory_item_model, stock_adjustment_model = get_inventory_models(api)
 class InventoryList(Resource):
         @api.doc('list_inventory')
         @api.marshal_list_with(inventory_item_model)
+        @require_admin
         def get(self):
-            """Get all inventory items with optional filtering"""
+            """Get all inventory items with optional filtering (Admin only)"""
             try:
                 # Validate query parameters
                 search_params = search_schema.load(request.args.to_dict())
@@ -79,13 +86,14 @@ class InventoryList(Resource):
                 # Serialize response
                 result = inventory_response_schema.dump(items, many=True)
                 
+                limit = search_params.get('per_page', 20)
                 return {
                     'items': result,
                     'pagination': {
                         'page': search_params.get('page', 1),
-                        'per_page': search_params.get('per_page', 20),
+                        'limit': limit,
                         'total': total,
-                        'pages': (total + search_params.get('per_page', 20) - 1) // search_params.get('per_page', 20)
+                        'pages': (total + limit - 1) // limit
                     }
                 }, 200
                 
@@ -97,8 +105,9 @@ class InventoryList(Resource):
 
         @api.doc('create_inventory')
         @api.expect(inventory_item_model)
+        @require_admin
         def post(self):
-            """Create new inventory item"""
+            """Create new inventory item (Admin only)"""
             try:
                 # Validate request data
                 data = inventory_request_schema.load(request.json)
@@ -202,8 +211,9 @@ class InventoryItem(Resource):
         @api.doc('update_inventory')
         @api.expect(inventory_item_model)
         @api.marshal_with(inventory_item_model)
+        @require_service_token
         def put(self, identifier):
-            """Update inventory item by SKU"""
+            """Update inventory item by SKU (Service Token required)"""
             try:
                 # Validate request data
                 data = inventory_request_schema.load(request.json)
@@ -212,7 +222,7 @@ class InventoryItem(Resource):
                 item = inventory_service.update_inventory_item(identifier, **data)
                 
                 if not item:
-                    return {'error': 'Inventory item not found'}, 404
+                    return sku_not_found_error(identifier)
                 
                 # Publish inventory.stock.updated event
                 correlation_id = getattr(g, 'correlation_id', None)
@@ -226,35 +236,38 @@ class InventoryItem(Resource):
                 return result, 200
                 
             except ValidationError as e:
-                return {'error': 'Validation failed', 'details': e.messages}, 400
+                return validation_error("Invalid request data", e.messages)
             except ValueError as e:
-                return {'error': str(e)}, 400
+                return create_error_response(ErrorCode.VALIDATION_ERROR, str(e), status_code=400)
             except Exception as e:
                 logger.error(f"Error updating inventory: {e}")
-                return {'error': 'Internal server error'}, 500
+                return create_error_response(ErrorCode.INTERNAL_ERROR, "Internal server error", status_code=500)
 
         @api.doc('delete_inventory')
+        @require_admin
         def delete(self, identifier):
-            """Delete inventory item"""
+            """Delete inventory item (Admin only)"""
             try:
                 inventory_service = InventoryService()
                 success = inventory_service.delete_inventory_item(identifier)
                 
                 if not success:
-                    return {'error': 'Inventory item not found'}, 404
+                    return sku_not_found_error(identifier)
                 
-                return {'message': 'Inventory item deleted successfully'}, 200
+                # Return 204 No Content as per PRD
+                return '', 204
                 
             except Exception as e:
                 logger.error(f"Error deleting inventory: {e}")
-                return {'error': 'Internal server error'}, 500
+                return create_error_response(ErrorCode.INTERNAL_ERROR, "Internal server error", status_code=500)
 
 @inventory_ns.route('/<string:identifier>/adjust')
 class StockAdjustment(Resource):
         @api.doc('adjust_stock')
         @api.expect(stock_adjustment_model)
+        @require_admin
         def post(self, identifier):
-            """Adjust stock for inventory item"""
+            """Adjust stock for inventory item (Admin only)"""
             try:
                 # Validate request data
                 data = stock_adjustment_schema.load(request.json)
@@ -345,63 +358,116 @@ class BatchInventoryRetrieval(Resource):
                 # Validate request has 'skus' array
                 data = request.json
                 if not data or 'skus' not in data:
-                    return {'error': 'Request must contain "skus" array'}, 400
+                    return validation_error("Request must contain 'skus' array")
                 
                 skus = data['skus']
                 if not isinstance(skus, list):
-                    return {'error': '"skus" must be an array'}, 400
+                    return validation_error("'skus' must be an array")
                 
+                # Check for inStockOnly filter from query params or request body
+                in_stock_only = request.args.get('inStockOnly', 'false').lower() == 'true' or data.get('in_stock_only', False)
+                
+                # Use service method for business logic
                 inventory_service = InventoryService()
-                result = []
-                
-                for sku in skus:
-                    # Try exact match first
-                    inventory_items = inventory_service.inventory_repo.get_multiple_by_skus([sku])
-                    
-                    if inventory_items:
-                        # Exact match found - return it
-                        item = inventory_items[0]
-                        result.append({
-                            'sku': item.sku,
-                            'quantityAvailable': item.quantity_available,
-                            'quantityReserved': item.quantity_reserved,
-                            'reorderPoint': item.reorder_level,
-                            'reorderQuantity': item.max_stock - item.reorder_level if item.max_stock > item.reorder_level else 0,
-                            'status': 'in_stock' if item.quantity_available > 0 else 'out_of_stock'
-                        })
-                    else:
-                        # No exact match - check if it's a base SKU by finding variants
-                        # Base SKU pattern: BRAND-DEPT-CAT-NUM (e.g., ANT-WOM-CLO-001)
-                        # Variant SKU pattern: BRAND-DEPT-CAT-NUM-COLOR-SIZE (e.g., ANT-WOM-CLO-001-GRAY-M)
-                        variant_items = inventory_service.inventory_repo.get_variants_by_base_sku(sku)
-                        
-                        if variant_items:
-                            # Aggregate inventory across all variants
-                            total_available = sum(item.quantity_available for item in variant_items)
-                            total_reserved = sum(item.quantity_reserved for item in variant_items)
-                            
-                            result.append({
-                                'sku': sku,
-                                'quantityAvailable': total_available,
-                                'quantityReserved': total_reserved,
-                                'reorderPoint': variant_items[0].reorder_level if variant_items else 0,
-                                'reorderQuantity': variant_items[0].max_stock - variant_items[0].reorder_level if variant_items and variant_items[0].max_stock > variant_items[0].reorder_level else 0,
-                                'status': 'in_stock' if total_available > 0 else 'out_of_stock',
-                                'variantCount': len(variant_items)
-                            })
-                        else:
-                            # No inventory found for this SKU
-                            result.append({
-                                'sku': sku,
-                                'quantityAvailable': 0,
-                                'quantityReserved': 0,
-                                'reorderPoint': 0,
-                                'reorderQuantity': 0,
-                                'status': 'out_of_stock'
-                            })
+                result = inventory_service.get_batch_inventory(skus, in_stock_only)
                 
                 return result, 200
                 
             except Exception as e:
                 logger.error(f"Error retrieving batch inventory: {e}")
-                return {'error': 'Internal server error', 'details': str(e)}, 500
+                return create_error_response(ErrorCode.INTERNAL_ERROR, "Internal server error", status_code=500)
+
+
+# ============================================================================
+# Stock Query Endpoints (per ARCHITECTURE.md Section 4.2.1-4.2.2)
+# These are the primary endpoints for service-to-service stock queries
+# ============================================================================
+
+@stock_ns.route('/<string:sku>')
+class StockQuery(Resource):
+        @api.doc('query_stock_single')
+        @require_service_token
+        def get(self, sku):
+            """Query stock for single SKU (Service Token required)
+            
+            Returns availability info for a single SKU.
+            Used by Product Service and Order Service.
+            
+            Per ARCHITECTURE.md Section 4.2.1:
+            - Endpoint: GET /api/inventory/stock/{sku}
+            - Authentication: Service Token (X-Service-Token header)
+            """
+            try:
+                inventory_service = InventoryService()
+                item = inventory_service.get_inventory_by_sku(sku)
+                
+                if not item:
+                    return sku_not_found_error(sku)
+                
+                # Return stock info in documented format
+                return {
+                    'sku': item.sku,
+                    'quantity_available': item.quantity_available,
+                    'quantity_reserved': item.quantity_reserved,
+                    'in_stock': item.quantity_available > 0
+                }, 200
+                
+            except Exception as e:
+                logger.error(f"Error querying stock for SKU {sku}: {e}")
+                return create_error_response(ErrorCode.INTERNAL_ERROR, "Internal server error", status_code=500)
+
+
+@stock_ns.route('/batch')
+class StockBatchQuery(Resource):
+        @api.doc('query_stock_batch')
+        @require_service_token
+        def post(self):
+            """Query stock for multiple SKUs (Service Token required)
+            
+            Returns availability info for multiple SKUs in a single request.
+            Used by Product Service and Cart Service for bulk checks.
+            
+            Per ARCHITECTURE.md Section 4.2.2:
+            - Endpoint: POST /api/inventory/stock/batch
+            - Authentication: Service Token (X-Service-Token header)
+            """
+            try:
+                data = request.json
+                if not data or 'skus' not in data:
+                    return validation_error("Request must contain 'skus' array")
+                
+                skus = data['skus']
+                if not isinstance(skus, list):
+                    return validation_error("'skus' must be an array")
+                
+                if len(skus) > 50:
+                    return validation_error("Maximum 50 SKUs per batch request")
+                
+                in_stock_only = data.get('in_stock_only', False)
+                
+                inventory_service = InventoryService()
+                items = []
+                not_found = []
+                
+                for sku in skus:
+                    item = inventory_service.get_inventory_by_sku(sku)
+                    if item:
+                        is_in_stock = item.quantity_available > 0
+                        if not in_stock_only or is_in_stock:
+                            items.append({
+                                'sku': item.sku,
+                                'quantity_available': item.quantity_available,
+                                'quantity_reserved': item.quantity_reserved,
+                                'in_stock': is_in_stock
+                            })
+                    else:
+                        not_found.append(sku)
+                
+                return {
+                    'items': items,
+                    'not_found': not_found
+                }, 200
+                
+            except Exception as e:
+                logger.error(f"Error querying batch stock: {e}")
+                return create_error_response(ErrorCode.INTERNAL_ERROR, "Internal server error", status_code=500)

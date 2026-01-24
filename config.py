@@ -4,25 +4,43 @@ from datetime import timedelta
 
 def get_database_uri():
     """
-    Lazy load database URI from Dapr secrets
-    Called when database connection is actually needed
+    Get database URI - checks DATABASE_URL first, then individual env vars, then Dapr secrets.
+    
+    Priority order:
+    1. DATABASE_URL (recommended - single connection string)
+    2. Individual env vars (MYSQL_USER, MYSQL_PASSWORD, etc.)
+    3. Dapr secrets (for production with Dapr sidecar)
+    4. Defaults (for local development)
     """
-    try:
-        from src.utils.secret_manager import get_database_config
-        db_config = get_database_config()
-        return (
-            f"mysql+pymysql://{db_config['user']}:{db_config['password']}@"
-            f"{db_config['host']}:{db_config['port']}/{db_config['database']}"
-        )
-    except Exception as e:
-        # Fallback to environment variables if Dapr not available (for local dev/testing)
-        # Note: These use uppercase env vars (standard convention) while Dapr secrets use lowercase-hyphenated
-        user = os.environ.get('MYSQL_USER', 'admin')
-        password = os.environ.get('MYSQL_PASSWORD', 'admin123')
-        host = os.environ.get('DATABASE_HOST', 'localhost')
+    # Priority 1: Use DATABASE_URL if set (simplest, cloud-friendly)
+    database_url = os.environ.get('DATABASE_URL')
+    if database_url:
+        return database_url
+    
+    # Priority 2: Build from individual env vars (legacy support)
+    user = os.environ.get('MYSQL_USER')
+    password = os.environ.get('MYSQL_PASSWORD')
+    host = os.environ.get('DATABASE_HOST')
+    database = os.environ.get('MYSQL_DATABASE')
+    
+    if all([user, password, host, database]):
         port = os.environ.get('DATABASE_PORT', '3306')
-        database = os.environ.get('MYSQL_DATABASE', 'inventory_service_db')
         return f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
+    
+    # Priority 3: Try Dapr secrets (for production with Dapr sidecar)
+    try:
+        from src.utils.secret_manager import get_database_url
+        return get_database_url()
+    except Exception:
+        pass
+    
+    # Priority 4: Defaults (local development fallback)
+    user = user or 'admin'
+    password = password or 'admin123'
+    host = host or 'localhost'
+    port = os.environ.get('DATABASE_PORT', '3306')
+    database = database or 'inventory_service_db'
+    return f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
 
 
 class Config:
@@ -40,9 +58,6 @@ class Config:
     }
     
     # Cache disabled - Redis removed
-    
-    # Reservation settings
-    RESERVATION_TTL_MINUTES = int(os.environ.get('RESERVATION_TTL_MINUTES', 30))
     
     # Dapr service app IDs
     DAPR_PRODUCT_SERVICE_APP_ID = os.environ.get('DAPR_PRODUCT_SERVICE_APP_ID', 'product-service')
@@ -83,6 +98,7 @@ class ProductionConfig(Config):
 config = {
     'development': DevelopmentConfig,
     'testing': TestingConfig,
+    'test': TestingConfig,  # Alias for 'testing'
     'production': ProductionConfig,
     'default': DevelopmentConfig
 }

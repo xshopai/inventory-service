@@ -1,17 +1,8 @@
-"""
-Pytest configuration for integration tests
-"""
-
-import os
-import sys
 import pytest
+import os
 
-# Add parent directories to path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
-
-# Set test environment
+# Set test environment variables
 os.environ['FLASK_ENV'] = 'testing'
-os.environ['TESTING'] = 'True'
 os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
 
 from src import create_app
@@ -20,7 +11,7 @@ from src.models import db
 
 @pytest.fixture(scope='session')
 def app():
-    """Create application for integration tests."""
+    """Create application for E2E tests."""
     app = create_app('testing')
     
     with app.app_context():
@@ -44,4 +35,3 @@ def db_session(app):
         for table in reversed(db.metadata.sorted_tables):
             db.session.execute(table.delete())
         db.session.commit()
-

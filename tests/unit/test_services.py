@@ -4,52 +4,52 @@ from datetime import datetime, timedelta
 
 from src.services import InventoryService
 from src.models import InventoryItem, Reservation, StockMovementType, ReservationStatus
-from tests.conftest import create_test_inventory_item, create_test_reservation
+from tests.unit.conftest import create_test_inventory_item, create_test_reservation
 
 
 class TestInventoryService:
     """Test InventoryService business logic."""
     
-    def test_get_inventory_by_product_id(self, db_session):
-        """Test getting inventory by product ID."""
+    def test_get_inventory_by_sku(self, db_session):
+        """Test getting inventory by SKU."""
         service = InventoryService()
-        create_test_inventory_item(db_session, product_id='SERVICE001')
+        create_test_inventory_item(db_session, sku='SERVICE001')
         
-        result = service.get_inventory_by_product_id('SERVICE001')
+        result = service.get_inventory_by_sku('SERVICE001')
         
         assert result is not None
-        assert result['product_id'] == 'SERVICE001'
+        assert result['sku'] == 'SERVICE001'
     
     def test_create_inventory_item(self, db_session):
         """Test creating inventory item through service."""
         service = InventoryService()
         
         item = service.create_inventory_item(
-            product_id='CREATE001',
+            sku='CREATE001',
             quantity_available=50,
             reorder_level=10
         )
         
-        assert item['product_id'] == 'CREATE001'
+        assert item['sku'] == 'CREATE001'
         assert item['quantity_available'] == 50
     
-    def test_create_inventory_item_duplicate(self, db_session):
-        """Test creating duplicate inventory item."""
+    def test_create_inventory_item_duplicate_sku(self, db_session):
+        """Test creating duplicate inventory item fails."""
         service = InventoryService()
         
         # Create first item
-        service.create_inventory_item(product_id='DUP001')
+        service.create_inventory_item(sku='DUP001')
         
-        # Create item with same SKU should work (different product_id)
-        item2 = service.create_inventory_item(product_id='DUP002')
-        assert item2 is not None
+        # Create item with same SKU should fail
+        with pytest.raises(ValueError, match="already exists"):
+            service.create_inventory_item(sku='DUP001')
     
     def test_update_inventory_item(self, db_session):
         """Test updating inventory item."""
         service = InventoryService()
         
         # First create an item
-        created = service.create_inventory_item(product_id='UPDATE001')
+        created = service.create_inventory_item(sku='UPDATE001')
         
         # Update it
         updated_item = service.update_inventory_item(
@@ -121,19 +121,19 @@ class TestInventoryService:
         # Create test items
         create_test_inventory_item(
             db_session, 
-            product_id='SEARCH001',
+            sku='SEARCH001',
             quantity_available=5,
             reorder_level=10
         )
         create_test_inventory_item(
             db_session,
-            product_id='SEARCH002',
+            sku='SEARCH002',
             quantity_available=50,
             reorder_level=10
         )
         
         # Search for low stock
-        items, total = service.search_inventory_advanced(low_stock=True)
+        items, total = service.search_inventory(**{'low_stock': True})
         
         assert total >= 1
         assert len(items) >= 1
@@ -156,15 +156,13 @@ class TestInventoryService:
         assert len(results) == 2
         assert all(result['success'] for result in results)
     
-    def test_get_inventory_with_product_details(self, db_session):
-        """Test getting inventory with product details."""
+    def test_get_inventory_by_sku_not_found(self, db_session):
+        """Test getting non-existent inventory by SKU."""
         service = InventoryService()
-        create_test_inventory_item(db_session, product_id='ENRICHED001')
         
-        enriched_item = service.get_inventory_with_product_details('ENRICHED001')
+        result = service.get_inventory_by_sku('NONEXISTENT')
         
-        assert enriched_item is not None
-        assert enriched_item['product_id'] == 'ENRICHED001'
+        assert result is None
     
     def test_health_check(self, db_session):
         """Test health check."""
@@ -262,8 +260,9 @@ class TestReservationService:
         # Create reservations
         service.create_reservation('SEARCH-RES001', 'SEARCH-ORDER', 5)
         
-        results = service.search_reservations(order_id='SEARCH-ORDER')
+        results, total = service.search_reservations(order_id='SEARCH-ORDER')
         
+        assert total >= 1
         assert len(results) >= 1
         assert all(r['order_id'] == 'SEARCH-ORDER' for r in results)
     

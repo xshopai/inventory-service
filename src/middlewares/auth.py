@@ -1,9 +1,11 @@
 """
 JWT Authentication and Authorization Middleware for Inventory Service
 Provides consistent authentication and role-based access control
+Includes service-to-service token validation
 """
 
 import jwt
+import os
 from functools import wraps
 from flask import request, g
 import logging
@@ -13,6 +15,28 @@ logger = logging.getLogger(__name__)
 
 # JWT Configuration - loaded from Dapr Secret Store and environment
 _jwt_config = None
+
+# Service tokens for service-to-service authentication
+_service_tokens = None
+
+
+def _get_service_tokens():
+    """
+    Get service token configuration from environment.
+    Used for validating incoming requests from other services.
+    """
+    global _service_tokens
+    if _service_tokens is None:
+        _service_tokens = {
+            'product-service': os.getenv('PRODUCT_SERVICE_TOKEN'),
+            'order-service': os.getenv('ORDER_SERVICE_TOKEN'),
+            'cart-service': os.getenv('CART_SERVICE_TOKEN'),
+            'web-bff': os.getenv('WEB_BFF_TOKEN')
+        }
+        # Filter out None values
+        _service_tokens = {k: v for k, v in _service_tokens.items() if v}
+        logger.info(f'Service tokens loaded for {len(_service_tokens)} services')
+    return _service_tokens
 
 
 def _get_jwt_config():
@@ -227,3 +251,65 @@ def get_current_user():
     Returns None if not authenticated
     """
     return getattr(g, 'current_user', None)
+
+
+def require_service_token(f):
+    """
+    Decorator to validate service-to-service authentication tokens.
+    
+    Checks for X-Service-Token header and validates against configured service tokens.
+    Used for event handler endpoints that receive calls from other services.
+    
+    Usage:
+        @require_service_token
+        def handle_product_created():
+            # Only callable by services with valid token
+            pass
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        try:
+            # Extract service token from custom header
+            service_token = request.headers.get('X-Service-Token', '')
+            
+            if not service_token:
+                logger.warning('Service authentication required: No service token provided')
+                return {
+                    'success': False,
+                    'error': 'Service authentication required',
+                    'message': 'No service token provided'
+                }, 401
+            
+            # Validate token against configured service tokens
+            valid_tokens = _get_service_tokens()
+            
+            # Check if token matches any configured service token
+            matching_service = None
+            for service_name, valid_token in valid_tokens.items():
+                if service_token == valid_token:
+                    matching_service = service_name
+                    break
+            
+            if not matching_service:
+                logger.warning(f'Invalid service token provided')
+                return {
+                    'success': False,
+                    'error': 'Invalid service token',
+                    'message': 'Service authentication failed'
+                }, 401
+            
+            # Store service info in Flask g object for logging
+            g.calling_service = matching_service
+            logger.info(f'Service authentication successful: {matching_service}')
+            
+            return f(*args, **kwargs)
+            
+        except Exception as e:
+            logger.error(f'Service authentication error: {str(e)}')
+            return {
+                'success': False,
+                'error': 'Authentication error',
+                'message': 'Service authentication failed'
+            }, 500
+    
+    return decorated_function

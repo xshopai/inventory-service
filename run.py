@@ -22,6 +22,11 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+# Create Flask application for gunicorn
+# gunicorn will import this as: run:app
+env = os.environ.get('FLASK_ENV', 'production')
+app = create_app(env)
+
 
 def main():
     """Main application entry point."""
@@ -50,7 +55,7 @@ def main():
     
     # Get host and port from environment
     host = os.environ.get('HOST', '0.0.0.0')
-    port = int(os.environ.get('PORT', 8005))
+    port = int(os.environ.get('PORT', 8004))
     debug = env == 'development'
     
     logger.info(f"Starting Inventory Service on {host}:{port}")

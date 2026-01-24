@@ -31,7 +31,7 @@ def health():
     }), 200
 
 
-@operational_hp.route('/readiness', methods=['GET'])
+@operational_hp.route('/health/ready', methods=['GET'])
 def readiness():
     """Readiness probe - checks if service is ready to handle traffic"""
     try:

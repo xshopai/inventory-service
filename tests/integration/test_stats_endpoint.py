@@ -5,7 +5,7 @@ Tests the stats endpoint with real database queries
 
 import pytest
 from flask import Flask
-from src.api.main import create_app
+from src import create_app
 from src.database import db
 from src.models import InventoryItem
 
@@ -34,7 +34,6 @@ def sample_inventory_items(app):
         items = [
             # Products with stock
             InventoryItem(
-                product_id='PROD-001',
                 sku='SKU-001',
                 quantity_available=100,
                 quantity_reserved=10,
@@ -42,7 +41,6 @@ def sample_inventory_items(app):
                 cost_per_unit=10.0
             ),
             InventoryItem(
-                product_id='PROD-002',
                 sku='SKU-002',
                 quantity_available=50,
                 quantity_reserved=5,
@@ -51,7 +49,6 @@ def sample_inventory_items(app):
             ),
             # Low stock item
             InventoryItem(
-                product_id='PROD-003',
                 sku='SKU-003',
                 quantity_available=5,
                 quantity_reserved=0,
@@ -60,7 +57,6 @@ def sample_inventory_items(app):
             ),
             # Out of stock item
             InventoryItem(
-                product_id='PROD-004',
                 sku='SKU-004',
                 quantity_available=0,
                 quantity_reserved=0,

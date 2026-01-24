@@ -19,6 +19,82 @@ class InventoryService:
     def __init__(self):
         self.inventory_repo = InventoryRepository()
         self.reservation_repo = ReservationRepository()
+        self.redis = None  # Redis caching is optional; initialize if needed
+    
+    def get_batch_inventory(self, skus: List[str], in_stock_only: bool = False) -> List[Dict[str, Any]]:
+        """
+        Get inventory data for multiple SKUs (supports both base and variant SKUs)
+        Moved from controller to service layer for proper separation of concerns
+        
+        Args:
+            skus: List of SKUs to query
+            in_stock_only: If True, only return items with available quantity > 0
+            
+        Returns:
+            List of inventory item dictionaries
+        """
+        try:
+            result = []
+            
+            for sku in skus:
+                # Try exact match first
+                inventory_items = self.inventory_repo.get_multiple_by_skus([sku])
+                
+                if inventory_items:
+                    # Exact match found - return it
+                    item = inventory_items[0]
+                    item_data = {
+                        'sku': item.sku,
+                        'quantityAvailable': item.quantity_available,
+                        'quantityReserved': item.quantity_reserved,
+                        'reorderPoint': item.reorder_level,
+                        'reorderQuantity': item.max_stock - item.reorder_level if item.max_stock > item.reorder_level else 0,
+                        'status': 'in_stock' if item.quantity_available > 0 else 'out_of_stock'
+                    }
+                    
+                    # Apply filter if requested
+                    if not in_stock_only or item.quantity_available > 0:
+                        result.append(item_data)
+                else:
+                    # No exact match - check if it's a base SKU by finding variants
+                    # Base SKU pattern: BRAND-DEPT-CAT-NUM (e.g., ANT-WOM-CLO-001)
+                    # Variant SKU pattern: BRAND-DEPT-CAT-NUM-COLOR-SIZE (e.g., ANT-WOM-CLO-001-GRAY-M)
+                    variant_items = self.inventory_repo.get_variants_by_base_sku(sku)
+                    
+                    if variant_items:
+                        # Aggregate inventory across all variants
+                        total_available = sum(item.quantity_available for item in variant_items)
+                        total_reserved = sum(item.quantity_reserved for item in variant_items)
+                        
+                        item_data = {
+                            'sku': sku,
+                            'quantityAvailable': total_available,
+                            'quantityReserved': total_reserved,
+                            'reorderPoint': variant_items[0].reorder_level if variant_items else 0,
+                            'reorderQuantity': variant_items[0].max_stock - variant_items[0].reorder_level if variant_items and variant_items[0].max_stock > variant_items[0].reorder_level else 0,
+                            'status': 'in_stock' if total_available > 0 else 'out_of_stock',
+                            'variantCount': len(variant_items)
+                        }
+                        
+                        # Apply filter if requested
+                        if not in_stock_only or total_available > 0:
+                            result.append(item_data)
+                    elif not in_stock_only:
+                        # No inventory found for this SKU - only include if not filtering
+                        result.append({
+                            'sku': sku,
+                            'quantityAvailable': 0,
+                            'quantityReserved': 0,
+                            'reorderPoint': 0,
+                            'reorderQuantity': 0,
+                            'status': 'out_of_stock'
+                        })
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error retrieving batch inventory: {str(e)}")
+            raise
     
     def check_stock_availability(self, stock_items: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
@@ -77,7 +153,7 @@ class InventoryService:
             raise
     
     def get_inventory_by_sku(self, sku: str) -> Optional[Dict[str, Any]]:
-        """Get inventory item by SKU with product details"""
+        """Get inventory item by SKU"""
         try:
             inventory_item = self.inventory_repo.get_by_sku(sku)
             if not inventory_item:
@@ -85,41 +161,13 @@ class InventoryService:
             
             result = inventory_item.to_dict()
             
-            # Enrich with product details if available
-            try:
-                product_details = self.product_client.get_product_by_id(inventory_item.product_id)
-                if product_details:
-                    result['product'] = product_details
-            except Exception as e:
-                logger.warning(f"Failed to fetch product details for {inventory_item.product_id}: {e}")
+            # Note: Product details enrichment removed - should be handled by Product Service
+            # Inventory Service only manages stock levels, not product catalog data
             
             return result
             
         except Exception as e:
             logger.error(f"Error getting inventory for SKU {sku}: {str(e)}")
-            raise
-    
-
-        """Get inventory item by product ID"""
-        try:
-            inventory_item = self.inventory_repo.get_by_product_id(product_id)
-            if not inventory_item:
-                return None
-            
-            result = inventory_item.to_dict()
-            
-            # Enrich with product details if available
-            try:
-                product_details = self.product_client.get_product_by_id(inventory_item.product_id)
-                if product_details:
-                    result['product'] = product_details
-            except Exception as e:
-                logger.warning(f"Failed to fetch product details for {inventory_item.product_id}: {e}")
-            
-            return result
-            
-        except Exception as e:
-            logger.error(f"Error getting inventory for product ID {product_id}: {str(e)}")
             raise
     
     def create_inventory_item(self, **kwargs) -> Dict[str, Any]:
@@ -165,15 +213,15 @@ class InventoryService:
             return success
             
         except Exception as e:
-            logger.error(f"Error deleting inventory item for product {product_id}: {str(e)}")
+            logger.error(f"Error deleting inventory item for SKU {sku}: {str(e)}")
             raise
     
     def update_inventory_item(self, sku: str, **kwargs) -> Dict[str, Any]:
         """Update an inventory item"""
         try:
-            inventory_item = self.inventory_repo.get_by_product_id(product_id)
+            inventory_item = self.inventory_repo.get_by_sku(sku)
             if not inventory_item:
-                raise ValueError(f"Inventory item for product {product_id} not found")
+                raise ValueError(f"Inventory item for SKU {sku} not found")
             
             # Update allowed fields
             for key, value in kwargs.items():
@@ -188,7 +236,7 @@ class InventoryService:
             return updated_item.to_dict()
             
         except Exception as e:
-            logger.error(f"Error updating inventory item for product {product_id}: {str(e)}")
+            logger.error(f"Error updating inventory item for SKU {sku}: {str(e)}")
             raise
 
     def adjust_stock(self, sku: str, quantity: int, movement_type, reference: str = None, reason: str = None) -> Dict[str, Any]:
@@ -362,25 +410,23 @@ class InventoryService:
         """
         Get inventory item with enhanced product details
         
+        Note: This method is deprecated. Product details enrichment should be handled 
+        by the Product Service, not Inventory Service. Inventory Service only manages 
+        stock levels.
+        
         Args:
             product_id: Product identifier
             
         Returns:
-            Inventory item with product details or None
+            Inventory item or None
         """
         try:
             # Get base inventory item
             inventory_item = self.get_inventory_by_product_id(product_id)
             
-            if inventory_item:
-                # Add product details from external service
-                try:
-                    product_details = self.product_client.get_product(product_id)
-                    inventory_item['product_details'] = product_details
-                except Exception as e:
-                    logger.warning(f"Could not fetch product details for {product_id}: {e}")
-                    inventory_item['product_details'] = {'error': 'Product details unavailable'}
-                    
+            # Note: Product details enrichment removed - should be handled by Product Service
+            # Inventory Service only manages stock levels, not product catalog data
+            
             return inventory_item
             
         except Exception as e:
@@ -504,12 +550,52 @@ class InventoryService:
             logger.error(f"Error cancelling reservation {reservation_id}: {str(e)}")
             raise
     
+    def release_reservation(self, reservation_id: str) -> Dict[str, Any]:
+        """
+        Release a reservation - restores reserved quantity back to available stock
+        Per PRD 4.9: Changes reservation status to 'released' and decrements reserved_quantity
+        """
+        try:
+            reservation = self.reservation_repo.get_by_id(reservation_id)
+            if not reservation:
+                raise ValueError("Reservation not found")
+            
+            # Cannot release already confirmed reservation
+            if reservation.status == ReservationStatus.CONFIRMED:
+                raise ValueError("Cannot release confirmed reservation")
+            
+            # Cannot release already released/cancelled reservation
+            if reservation.status in [ReservationStatus.RELEASED, ReservationStatus.CANCELLED]:
+                raise ValueError(f"Reservation already {reservation.status.value}")
+            
+            # Update reservation status to RELEASED
+            self.reservation_repo.update_status(reservation_id, ReservationStatus.RELEASED)
+            
+            # Release stock back to available pool
+            self.inventory_repo.update_stock(
+                sku=reservation.sku,
+                quantity_change=reservation.quantity,
+                movement_type=StockMovementType.RELEASED,
+                reference=reservation.order_id,
+                reason=f"Released reservation for order {reservation.order_id}"
+            )
+            
+            logger.info(f"Released reservation {reservation_id} for order {reservation.order_id}")
+            
+            # Return updated reservation
+            updated_reservation = self.reservation_repo.get_by_id(reservation_id)
+            return updated_reservation.to_dict() if updated_reservation else None
+            
+        except Exception as e:
+            logger.error(f"Error releasing reservation {reservation_id}: {str(e)}")
+            raise
+    
     def search_reservations(self, **kwargs):
-        """Search reservations with filters - returns list for compatibility with tests"""
+        """Search reservations with filters - returns tuple (list, count)"""
         try:
             reservations, total = self.reservation_repo.search(**kwargs)
-            # Return just the list for test compatibility
-            return [r.to_dict() for r in reservations]
+            # Return tuple for consistency with controller expectations
+            return [r.to_dict() for r in reservations], total
             
         except Exception as e:
             logger.error(f"Error searching reservations: {str(e)}")

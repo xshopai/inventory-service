@@ -1,14 +1,26 @@
 """
 Reservations Controller - Handles inventory reservation operations
+
+Per ARCHITECTURE.md Section 4.1:
+- GET /api/inventory/reservations - Admin JWT
+- POST /api/inventory/reservations - Service Token
+- GET /api/inventory/reservations/{id} - Service Token
+- POST /api/inventory/reservations/{id}/confirm - Service Token
+- POST /api/inventory/reservations/{id}/release - Service Token
 """
 
 from flask import Blueprint, request
 from flask_restx import Api, Resource, fields
 from marshmallow import ValidationError
 from src.services import InventoryService
+from src.middlewares.auth import require_admin, require_service_token
 from src.utils.schemas import (
     ReservationRequestSchema, ReservationResponseSchema,
     ReservationConfirmRequestSchema
+)
+from src.utils.error_codes import (
+    reservation_not_found_error, insufficient_stock_error,
+    validation_error, create_error_response, ErrorCode
 )
 import logging
 
@@ -54,8 +66,9 @@ reservation_model = get_reservation_models(api)
 class ReservationList(Resource):
         @api.doc('list_reservations')
         @api.marshal_list_with(reservation_model)
+        @require_admin
         def get(self):
-            """Get all reservations with optional filtering"""
+            """Get all reservations with optional filtering (Admin JWT required)"""
             try:
                 # Get query parameters
                 customer_id = request.args.get('customer_id')
@@ -79,7 +92,7 @@ class ReservationList(Resource):
                     'items': result,
                     'pagination': {
                         'page': page,
-                        'per_page': per_page,
+                        'limit': per_page,
                         'total': total,
                         'pages': (total + per_page - 1) // per_page
                     }
@@ -92,8 +105,9 @@ class ReservationList(Resource):
         @api.doc('create_reservation')
         @api.expect(reservation_model)
         @api.marshal_with(reservation_model)
+        @require_service_token
         def post(self):
-            """Create new reservation"""
+            """Create new reservation (Service Token required)"""
             try:
                 # Validate request data
                 data = reservation_request_schema.load(request.json)
@@ -102,60 +116,117 @@ class ReservationList(Resource):
                 reservation = inventory_service.create_reservation(**data)
                 
                 if not reservation:
-                    return {'error': 'Insufficient stock for reservation'}, 409
+                    # Get SKU from request to provide better error
+                    sku = data.get('sku', 'unknown')
+                    return insufficient_stock_error(sku, data.get('quantity', 0), 0)
                 
                 result = reservation_response_schema.dump(reservation)
                 return result, 201
                 
             except ValidationError as e:
-                return {'error': 'Validation failed', 'details': e.messages}, 400
+                return validation_error("Invalid request data", e.messages)
             except ValueError as e:
-                return {'error': str(e)}, 400
+                return create_error_response(ErrorCode.VALIDATION_ERROR, str(e), status_code=400)
             except Exception as e:
                 logger.error(f"Error creating reservation: {e}")
-                return {'error': 'Internal server error'}, 500
+                return create_error_response(ErrorCode.INTERNAL_ERROR, "Internal server error", status_code=500)
 
-@reservations_ns.route('/<int:reservation_id>')
+@reservations_ns.route('/<string:reservation_id>')
 class Reservation(Resource):
         @api.doc('get_reservation')
         @api.marshal_with(reservation_model)
+        @require_service_token
         def get(self, reservation_id):
-            """Get reservation by ID"""
+            """Get reservation by ID (Service Token required)"""
             try:
                 inventory_service = InventoryService()
                 reservation = inventory_service.get_reservation(reservation_id)
                 
                 if not reservation:
-                    return {'error': 'Reservation not found'}, 404
+                    return reservation_not_found_error(reservation_id)
                 
                 result = reservation_response_schema.dump(reservation)
                 return result, 200
                 
             except Exception as e:
                 logger.error(f"Error getting reservation {reservation_id}: {e}")
-                return {'error': 'Internal server error'}, 500
+                return create_error_response(ErrorCode.INTERNAL_ERROR, "Internal server error", status_code=500)
 
         @api.doc('cancel_reservation')
+        @require_service_token
         def delete(self, reservation_id):
-            """Cancel reservation"""
+            """Cancel reservation (Service Token required)"""
             try:
                 inventory_service = InventoryService()
                 success = inventory_service.cancel_reservation(reservation_id)
                 
                 if not success:
-                    return {'error': 'Reservation not found or already processed'}, 404
+                    return reservation_not_found_error(reservation_id)
                 
                 return {'message': 'Reservation cancelled successfully'}, 200
                 
             except Exception as e:
                 logger.error(f"Error cancelling reservation {reservation_id}: {e}")
-                return {'error': 'Internal server error'}, 500
+                return create_error_response(ErrorCode.INTERNAL_ERROR, "Internal server error", status_code=500)
+
+@reservations_ns.route('/<string:reservation_id>/confirm')
+class ReservationConfirmSingle(Resource):
+        @api.doc('confirm_reservation')
+        @require_service_token
+        def post(self, reservation_id):
+            """Confirm a single reservation - Service Token required (PRD 4.8)"""
+            try:
+                # Require order_id in request body for validation
+                data = request.json or {}
+                order_id = data.get('order_id')
+                
+                if not order_id:
+                    return validation_error("order_id is required in request body")
+                
+                inventory_service = InventoryService()
+                success = inventory_service.confirm_reservation(reservation_id, order_id)
+                
+                if not success:
+                    return reservation_not_found_error(reservation_id)
+                
+                return {'message': 'Reservation confirmed successfully', 'reservation_id': reservation_id}, 200
+                
+            except ValueError as e:
+                return create_error_response(ErrorCode.VALIDATION_ERROR, str(e), status_code=400)
+            except Exception as e:
+                logger.error(f"Error confirming reservation {reservation_id}: {e}")
+                return create_error_response(ErrorCode.INTERNAL_ERROR, "Internal server error", status_code=500)
+
+@reservations_ns.route('/<string:reservation_id>/release')
+class ReservationRelease(Resource):
+        @api.doc('release_reservation')
+        @require_service_token
+        def post(self, reservation_id):
+            """Release a reservation - Service Token required. Restores reserved quantity back to available (PRD 4.9)"""
+            try:
+                inventory_service = InventoryService()
+                reservation = inventory_service.release_reservation(reservation_id)
+                
+                if not reservation:
+                    return reservation_not_found_error(reservation_id)
+                
+                return {
+                    'message': 'Reservation released successfully',
+                    'reservation': reservation
+                }, 200
+                
+            except ValueError as e:
+                return create_error_response(ErrorCode.VALIDATION_ERROR, str(e), status_code=400)
+            except Exception as e:
+                logger.error(f"Error releasing reservation {reservation_id}: {e}")
+                return create_error_response(ErrorCode.INTERNAL_ERROR, "Internal server error", status_code=500)
 
 @reservations_ns.route('/confirm')
 class ReservationConfirm(Resource):
         @api.doc('confirm_reservations')
+        @require_service_token
         def post(self):
-            """Confirm multiple reservations"""
+            """Confirm multiple reservations (Service Token required)"""
             try:
                 # Validate request data
                 data = reservation_confirm_schema.load(request.json)

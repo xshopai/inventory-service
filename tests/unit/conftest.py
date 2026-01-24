@@ -10,7 +10,7 @@ os.environ['FLASK_ENV'] = 'testing'
 os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
 os.environ['REDIS_URL'] = 'redis://localhost:6379/1'
 
-from src.api.main import create_app
+from src import create_app
 from src.models import db, InventoryItem, Reservation, StockMovement, StockMovementType, ReservationStatus
 
 
@@ -60,7 +60,6 @@ def sample_inventory_item(db_session):
     """Create a sample inventory item for testing."""
     item = InventoryItem(
         sku='TEST-SKU-001',
-        product_id='TEST001',
         quantity_available=100,
         quantity_reserved=10,
         reorder_level=20,
@@ -146,7 +145,6 @@ def create_test_inventory_item(db_session, **kwargs):
     import uuid
     defaults = {
         'sku': f'TEST-SKU-{str(uuid.uuid4())[:8]}',  # Generate unique SKU
-        'product_id': 'TEST001',
         'quantity_available': 100,
         'quantity_reserved': 0,
         'reorder_level': 10,
@@ -200,7 +198,6 @@ def assert_inventory_response(response_data, expected_item):
     """Assert inventory item response format."""
     assert response_data['id'] == expected_item.id
     assert response_data['sku'] == expected_item.sku
-    assert response_data['product_id'] == expected_item.product_id
     assert response_data['quantity_available'] == expected_item.quantity_available
     assert response_data['quantity_reserved'] == expected_item.quantity_reserved
     assert response_data['total_quantity'] == expected_item.total_quantity
@@ -231,7 +228,6 @@ def generate_inventory_data(**kwargs):
     """Generate inventory item test data."""
     defaults = {
         'sku': 'TEST-SKU-001',
-        'product_id': 'PROD001',
         'quantity_available': 100,
         'quantity_reserved': 0,
         'reorder_level': 10,
