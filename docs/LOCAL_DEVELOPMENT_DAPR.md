@@ -50,18 +50,51 @@ You should see these containers:
 
 ## Step 2: Configure Environment for Dapr Mode
 
-Update your `.env` file for Dapr messaging:
+The repository includes pre-configured environment files:
+
+- **`.env.local`** - For local development without Dapr
+- **`.env.dapr`** - For local development with Dapr sidecar (this guide)
+
+Copy the Dapr environment template to `.env`:
 
 ```bash
-# Messaging Provider - Use Dapr
+# On Linux/Mac:
+cp .env.dapr .env
+
+# On Windows (PowerShell):
+Copy-Item .env.dapr .env
+
+# On Windows (Command Prompt):
+copy .env.dapr .env
+```
+
+The `.env.dapr` file contains:
+
+```bash
+PORT=8004
+
+# Flask Configuration
+FLASK_ENV=development
+SECRET_KEY=your-dev-secret-key-change-me
+
+# Messaging Configuration - Dapr
 MESSAGING_PROVIDER=dapr
 DAPR_PUBSUB_NAME=event-bus
 DAPR_HTTP_PORT=3504
 
-# Database and service tokens remain the same as PREREQUISITES.md
+# Service Tokens (for service-to-service communication)
+PRODUCT_SERVICE_TOKEN=svc-product-service-4ff5876fc86cc45a18d88e5d
+ORDER_SERVICE_TOKEN=svc-order-service-4ff5876fc86cc45a18d88e5d
+CART_SERVICE_TOKEN=svc-cart-service-4ff5876fc86cc45a18d88e5d
+WEB_BFF_TOKEN=svc-web-bff-4ff5876fc86cc45a18d88e5d
+
+# Logging
+LOG_LEVEL=DEBUG
 ```
 
-> **Note**: When using Dapr mode, you do NOT need the `RABBITMQ_*` environment variables in your `.env` file. The Dapr sidecar handles RabbitMQ connections using the configuration in `.dapr/components/event-bus.yaml`.
+> **Note**: 
+> - When using Dapr mode, database credentials and JWT secret are retrieved from the Dapr secret store (configured in `.dapr/secrets.json`)
+> - The Dapr sidecar handles RabbitMQ connections using the configuration in `.dapr/components/event-bus.yaml`
 
 ---
 

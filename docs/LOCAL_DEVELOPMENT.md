@@ -20,13 +20,38 @@ For production-like local development with Dapr, see [Local Development with Dap
 
 ## Step 1: Configure Environment for Non-Dapr Mode
 
-Ensure your `.env` file includes the required configuration:
+The repository includes pre-configured environment files:
+
+- **`.env.local`** - For local development without Dapr (direct RabbitMQ connection)
+- **`.env.dapr`** - For local development with Dapr sidecar
+
+Copy the local environment template to `.env`:
 
 ```bash
-# Messaging Configuration (non-Dapr mode)
-MESSAGING_PROVIDER=rabbitmq
+# On Linux/Mac:
+cp .env.local .env
 
-# RabbitMQ Connection (required when MESSAGING_PROVIDER=rabbitmq)
+# On Windows (PowerShell):
+Copy-Item .env.local .env
+
+# On Windows (Command Prompt):
+copy .env.local .env
+```
+
+The `.env.local` file contains:
+
+```bash
+PORT=8004
+
+# Flask Configuration
+FLASK_ENV=development
+SECRET_KEY=your-dev-secret-key-change-me
+
+# Database Configuration
+DATABASE_URL=mysql+pymysql://admin:admin123@localhost:3306/inventory_service_db
+
+# Messaging Configuration - Direct RabbitMQ
+MESSAGING_PROVIDER=rabbitmq
 RABBITMQ_HOST=localhost
 RABBITMQ_PORT=5672
 RABBITMQ_USERNAME=guest
@@ -36,18 +61,23 @@ RABBITMQ_URL=amqp://guest:guest@localhost:5672/
 RABBITMQ_EXCHANGE=inventory-events
 
 # JWT Configuration (required for non-Dapr mode)
-# Must match the secret used by auth-service to sign tokens
 JWT_SECRET=8tDBDMcpxroHoHjXjk8xp/uAn8rzD4y8ZZremFkC4gI=
-JWT_ALGORITHM=HS256
-JWT_ISSUER=auth-service
-JWT_AUDIENCE=xshopai-platform
+
+# Service Tokens (for service-to-service communication)
+PRODUCT_SERVICE_TOKEN=svc-product-service-4ff5876fc86cc45a18d88e5d
+ORDER_SERVICE_TOKEN=svc-order-service-4ff5876fc86cc45a18d88e5d
+CART_SERVICE_TOKEN=svc-cart-service-4ff5876fc86cc45a18d88e5d
+WEB_BFF_TOKEN=svc-web-bff-4ff5876fc86cc45a18d88e5d
+
+# Logging
+LOG_LEVEL=DEBUG
 ```
 
 > **Note**:
 >
-> - `RABBITMQ_*` variables are only needed when using `MESSAGING_PROVIDER=rabbitmq`
+> - `MESSAGING_PROVIDER=rabbitmq` uses direct RabbitMQ connection (no Dapr required)
 > - `JWT_SECRET` is required for non-Dapr mode (in Dapr mode, it's retrieved from the Secret Store)
-> - If you're using Dapr mode, see [Local Development with Dapr](LOCAL_DEVELOPMENT_DAPR.md) instead
+> - Service tokens must match tokens configured in calling services
 
 ---
 
