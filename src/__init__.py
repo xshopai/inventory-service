@@ -1,8 +1,69 @@
 import os
 import sys
 import logging
+from logging.handlers import RotatingFileHandler
 from flask import Flask
 from src.models import db
+
+
+def configure_logging(app):
+    """
+    Configure logging based on environment variables.
+    Supports console and file logging with JSON or console format.
+    """
+    log_level = getattr(logging, app.config.get('LOG_LEVEL', 'INFO').upper())
+    log_format = app.config.get('LOG_FORMAT', 'console')
+    log_to_console = app.config.get('LOG_TO_CONSOLE', True)
+    log_to_file = app.config.get('LOG_TO_FILE', False)
+    log_file_path = app.config.get('LOG_FILE_PATH', './logs/inventory-service.log')
+    
+    # Create formatter based on format type
+    if log_format == 'json':
+        formatter = logging.Formatter(
+            '{"timestamp": "%(asctime)s", "level": "%(levelname)s", '
+            '"service": "inventory-service", "logger": "%(name)s", '
+            '"message": "%(message)s"}'
+        )
+    else:
+        formatter = logging.Formatter(
+            '%(asctime)s %(levelname)s %(name)s: %(message)s'
+        )
+    
+    # Get root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(log_level)
+    
+    # Clear existing handlers
+    root_logger.handlers.clear()
+    
+    # Console handler
+    if log_to_console:
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(log_level)
+        console_handler.setFormatter(formatter)
+        root_logger.addHandler(console_handler)
+    
+    # File handler
+    if log_to_file:
+        # Ensure log directory exists
+        log_dir = os.path.dirname(log_file_path)
+        if log_dir and not os.path.exists(log_dir):
+            os.makedirs(log_dir, exist_ok=True)
+        
+        file_handler = RotatingFileHandler(
+            log_file_path,
+            maxBytes=10 * 1024 * 1024,  # 10 MB
+            backupCount=5
+        )
+        file_handler.setLevel(log_level)
+        # Always use JSON format for file logging
+        file_formatter = logging.Formatter(
+            '{"timestamp": "%(asctime)s", "level": "%(levelname)s", '
+            '"service": "inventory-service", "logger": "%(name)s", '
+            '"message": "%(message)s"}'
+        )
+        file_handler.setFormatter(file_formatter)
+        root_logger.addHandler(file_handler)
 
 
 def create_app(config_name='default'):
@@ -30,10 +91,7 @@ def create_app(config_name='default'):
     
     # Configure logging
     if not app.testing:
-        logging.basicConfig(
-            level=getattr(logging, app.config['LOG_LEVEL']),
-            format='%(asctime)s %(levelname)s %(name)s: %(message)s'
-        )
+        configure_logging(app)
     
     # Register API blueprints
     try:

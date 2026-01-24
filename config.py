@@ -68,6 +68,10 @@ class Config:
     
     # Logging
     LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO')
+    LOG_FORMAT = os.environ.get('LOG_FORMAT', 'console')  # 'console' or 'json'
+    LOG_TO_CONSOLE = os.environ.get('LOG_TO_CONSOLE', 'true').lower() == 'true'
+    LOG_TO_FILE = os.environ.get('LOG_TO_FILE', 'false').lower() == 'true'
+    LOG_FILE_PATH = os.environ.get('LOG_FILE_PATH', './logs/inventory-service.log')
     
 
 
