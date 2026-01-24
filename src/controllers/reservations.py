@@ -62,46 +62,10 @@ def get_reservation_models(api):
 reservation_model = get_reservation_models(api)
 
 # Register routes
+# Note: GET /api/inventory/reservations (list all) moved to admin controller at /api/admin/inventory/reservations
+
 @reservations_ns.route('/')
 class ReservationList(Resource):
-        @api.doc('list_reservations')
-        @api.marshal_list_with(reservation_model)
-        @require_admin
-        def get(self):
-            """Get all reservations with optional filtering (Admin JWT required)"""
-            try:
-                # Get query parameters
-                customer_id = request.args.get('customer_id')
-                order_id = request.args.get('order_id')
-                status = request.args.get('status')
-                page = int(request.args.get('page', 1))
-                per_page = min(int(request.args.get('per_page', 20)), 100)
-                
-                inventory_service = InventoryService()
-                reservations, total = inventory_service.search_reservations(
-                    customer_id=customer_id,
-                    order_id=order_id,
-                    status=status,
-                    page=page,
-                    per_page=per_page
-                )
-                
-                result = reservation_response_schema.dump(reservations, many=True)
-                
-                return {
-                    'items': result,
-                    'pagination': {
-                        'page': page,
-                        'limit': per_page,
-                        'total': total,
-                        'pages': (total + per_page - 1) // per_page
-                    }
-                }, 200
-                
-            except Exception as e:
-                logger.error(f"Error listing reservations: {e}")
-                return {'error': 'Internal server error'}, 500
-
         @api.doc('create_reservation')
         @api.expect(reservation_model)
         @api.marshal_with(reservation_model)

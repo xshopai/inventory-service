@@ -101,6 +101,14 @@ def create_app(config_name='default'):
     except Exception as e:
         app.logger.warning(f"Inventory API registration failed: {e}. Running without API endpoints.")
     
+    # Register admin blueprint (admin-only endpoints at /api/admin)
+    try:
+        from src.controllers import admin_bp
+        app.register_blueprint(admin_bp, url_prefix='/api/admin')
+        app.logger.info("Admin API registered successfully at /api/admin")
+    except Exception as e:
+        app.logger.warning(f"Admin API registration failed: {e}")
+    
     # Register reservations blueprint
     # Per ARCHITECTURE.md Section 4.1, reservations are at /api/inventory/reservations
     try:

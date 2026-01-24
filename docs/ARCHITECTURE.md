@@ -508,16 +508,17 @@ Database connection is configured via the `DATABASE_URL` environment variable.
 | `GET`    | `/metrics`                                 | Prometheus metrics            | None          |
 | `GET`    | `/api/inventory/stock/{sku}`               | Query stock for single SKU    | Service Token |
 | `POST`   | `/api/inventory/stock/batch`               | Query stock for multiple SKUs | Service Token |
-| `GET`    | `/api/inventory`                           | List inventory records        | Admin JWT     |
-| `POST`   | `/api/inventory`                           | Create inventory record       | Admin JWT     |
 | `GET`    | `/api/inventory/{sku}`                     | Get inventory by SKU          | Service Token |
 | `PUT`    | `/api/inventory/{sku}`                     | Update inventory quantity     | Service Token |
-| `DELETE` | `/api/inventory/{sku}`                     | Delete inventory record       | Admin JWT     |
-| `GET`    | `/api/inventory/reservations`              | List reservations             | Admin JWT     |
 | `POST`   | `/api/inventory/reservations`              | Create reservation            | Service Token |
 | `GET`    | `/api/inventory/reservations/{id}`         | Get reservation by ID         | Service Token |
 | `POST`   | `/api/inventory/reservations/{id}/confirm` | Confirm reservation           | Service Token |
 | `POST`   | `/api/inventory/reservations/{id}/release` | Release reservation           | Service Token |
+| `GET`    | `/api/admin/inventory`                     | List inventory records        | Admin JWT     |
+| `POST`   | `/api/admin/inventory`                     | Create inventory record       | Admin JWT     |
+| `DELETE` | `/api/admin/inventory/{sku}`               | Delete inventory record       | Admin JWT     |
+| `POST`   | `/api/admin/inventory/{sku}/adjust`        | Adjust stock levels           | Admin JWT     |
+| `GET`    | `/api/admin/inventory/reservations`        | List all reservations         | Admin JWT     |
 
 **Authentication Types:**
 
@@ -612,7 +613,7 @@ Database connection is configured via the `DATABASE_URL` environment variable.
 
 #### 4.2.3 List Inventory Records
 
-**Endpoint:** `GET /api/inventory`
+**Endpoint:** `GET /api/admin/inventory`
 
 **Authentication:** Admin JWT
 
@@ -659,7 +660,7 @@ Database connection is configured via the `DATABASE_URL` environment variable.
 
 #### 4.2.4 Create Inventory Record
 
-**Endpoint:** `POST /api/inventory`
+**Endpoint:** `POST /api/admin/inventory`
 
 **Authentication:** Admin JWT
 
@@ -752,7 +753,7 @@ Database connection is configured via the `DATABASE_URL` environment variable.
 
 #### 4.2.6 Delete Inventory Record
 
-**Endpoint:** `DELETE /api/inventory/{sku}`
+**Endpoint:** `DELETE /api/admin/inventory/{sku}`
 
 **Authentication:** Admin JWT
 
@@ -780,7 +781,7 @@ Database connection is configured via the `DATABASE_URL` environment variable.
 
 #### 4.2.7 List Reservations
 
-**Endpoint:** `GET /api/inventory/reservations`
+**Endpoint:** `GET /api/admin/inventory/reservations`
 
 **Authentication:** Admin JWT
 

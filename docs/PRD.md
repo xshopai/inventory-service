@@ -397,7 +397,7 @@ The system shall provide an API to list all inventory records with pagination.
 
 | Aspect     | Specification                 |
 | ---------- | ----------------------------- |
-| Endpoint   | `GET /api/inventory`          |
+| Endpoint   | `GET /api/admin/inventory`    |
 | Pagination | Query params: `page`, `limit` |
 | Default    | page=1, limit=20              |
 | Auth       | Admin authentication required |
@@ -421,7 +421,7 @@ The system shall provide an API to create a new inventory record with SKU and in
 
 | Aspect   | Specification                        |
 | -------- | ------------------------------------ |
-| Endpoint | `POST /api/inventory`                |
+| Endpoint | `POST /api/admin/inventory`          |
 | Input    | `{ sku: string, quantity: integer }` |
 | Auth     | Admin authentication required        |
 
@@ -464,11 +464,11 @@ The system shall provide an API to update quantity for an existing inventory rec
 
 **Functional Details:**
 
-| Aspect   | Specification                 |
-| -------- | ----------------------------- |
-| Endpoint | `PUT /api/inventory/{sku}`    |
-| Input    | `{ quantity: integer }`       |
-| Auth     | Admin authentication required |
+| Aspect   | Specification                    |
+| -------- | -------------------------------- |
+| Endpoint | `PUT /api/admin/inventory/{sku}` |
+| Input    | `{ quantity: integer }`          |
+| Auth     | Admin authentication required    |
 
 **Acceptance Criteria:**
 
@@ -489,7 +489,7 @@ The system shall provide an API to delete an inventory record by SKU.
 
 | Aspect   | Specification                            |
 | -------- | ---------------------------------------- |
-| Endpoint | `DELETE /api/inventory/{sku}`            |
+| Endpoint | `DELETE /api/admin/inventory/{sku}`      |
 | Auth     | Admin authentication required            |
 | Safety   | Should warn if active reservations exist |
 

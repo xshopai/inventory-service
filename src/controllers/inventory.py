@@ -71,70 +71,6 @@ inventory_item_model, stock_adjustment_model = get_inventory_models(api)
 # Register routes
 @inventory_ns.route('/')
 class InventoryList(Resource):
-        @api.doc('list_inventory')
-        @api.marshal_list_with(inventory_item_model)
-        @require_admin
-        def get(self):
-            """Get all inventory items with optional filtering (Admin only)"""
-            try:
-                # Validate query parameters
-                search_params = search_schema.load(request.args.to_dict())
-                
-                inventory_service = InventoryService()
-                items, total = inventory_service.search_inventory(**search_params)
-                
-                # Serialize response
-                result = inventory_response_schema.dump(items, many=True)
-                
-                limit = search_params.get('per_page', 20)
-                return {
-                    'items': result,
-                    'pagination': {
-                        'page': search_params.get('page', 1),
-                        'limit': limit,
-                        'total': total,
-                        'pages': (total + limit - 1) // limit
-                    }
-                }, 200
-                
-            except ValidationError as e:
-                return {'error': 'Validation failed', 'details': e.messages}, 400
-            except Exception as e:
-                logger.error(f"Error listing inventory: {e}")
-                return {'error': 'Internal server error'}, 500
-
-        @api.doc('create_inventory')
-        @api.expect(inventory_item_model)
-        @require_admin
-        def post(self):
-            """Create new inventory item (Admin only)"""
-            try:
-                # Validate request data
-                data = inventory_request_schema.load(request.json)
-                
-                inventory_service = InventoryService()
-                item = inventory_service.create_inventory_item(**data)
-                
-                # Publish inventory.created event
-                correlation_id = getattr(g, 'correlation_id', None)
-                event_publisher.publish_inventory_created(
-                    product_id=item.sku,  # Using SKU as identifier
-                    initial_quantity=item.quantity_available,
-                    correlation_id=correlation_id
-                )
-                
-                # Serialize response
-                result = inventory_response_schema.dump(item)
-                return result, 201
-                
-            except ValidationError as e:
-                return {'error': 'Validation failed', 'details': e.messages}, 400
-            except ValueError as e:
-                return {'error': str(e)}, 400
-            except Exception as e:
-                logger.error(f"Error creating inventory item: {e}")
-                return {'error': 'Internal server error'}, 500
-
         @api.doc('bulk_update_inventory')
         def put(self):
             """Bulk update inventory items"""
@@ -243,77 +179,9 @@ class InventoryItem(Resource):
                 logger.error(f"Error updating inventory: {e}")
                 return create_error_response(ErrorCode.INTERNAL_ERROR, "Internal server error", status_code=500)
 
-        @api.doc('delete_inventory')
-        @require_admin
-        def delete(self, identifier):
-            """Delete inventory item (Admin only)"""
-            try:
-                inventory_service = InventoryService()
-                success = inventory_service.delete_inventory_item(identifier)
-                
-                if not success:
-                    return sku_not_found_error(identifier)
-                
-                # Return 204 No Content as per PRD
-                return '', 204
-                
-            except Exception as e:
-                logger.error(f"Error deleting inventory: {e}")
-                return create_error_response(ErrorCode.INTERNAL_ERROR, "Internal server error", status_code=500)
+        # Note: DELETE endpoint moved to admin controller at /api/admin/inventory/<identifier>
 
-@inventory_ns.route('/<string:identifier>/adjust')
-class StockAdjustment(Resource):
-        @api.doc('adjust_stock')
-        @api.expect(stock_adjustment_model)
-        @require_admin
-        def post(self, identifier):
-            """Adjust stock for inventory item (Admin only)"""
-            try:
-                # Validate request data
-                data = stock_adjustment_schema.load(request.json)
-                data['product_id'] = identifier  # Ensure consistency
-                
-                inventory_service = InventoryService()
-                movement = inventory_service.adjust_stock(**data)
-                
-                if not movement:
-                    return {'error': 'Failed to adjust stock'}, 400
-                
-                # Get updated inventory to publish event
-                item = inventory_service.get_inventory_by_sku(identifier)
-                if item:
-                    correlation_id = getattr(g, 'correlation_id', None)
-                    event_publisher.publish_stock_updated(
-                        product_id=item.sku,  # Using SKU as identifier
-                        quantity=item.quantity_available,
-                        correlation_id=correlation_id
-                    )
-                    
-                    # Check for low stock alert
-                    if item.quantity_available <= item.reorder_level:
-                        if item.quantity_available == 0:
-                            event_publisher.publish_out_of_stock_alert(
-                                product_id=item.sku,  # Using SKU as identifier
-                                correlation_id=correlation_id
-                            )
-                        else:
-                            event_publisher.publish_low_stock_alert(
-                                product_id=item.sku,  # Using SKU as identifier
-                                current_quantity=item.quantity_available,
-                                threshold=item.reorder_level,
-                                correlation_id=correlation_id
-                            )
-                
-                result = stock_movement_schema.dump(movement)
-                return result, 200
-                
-            except ValidationError as e:
-                return {'error': 'Validation failed', 'details': e.messages}, 400
-            except ValueError as e:
-                return {'error': str(e)}, 400
-            except Exception as e:
-                logger.error(f"Error adjusting stock for product {identifier}: {e}")
-                return {'error': 'Internal server error'}, 500
+# Note: Stock adjustment endpoint moved to admin controller at /api/admin/inventory/<identifier>/adjust
 
 @inventory_ns.route('/check')
 class CheckAvailability(Resource):
