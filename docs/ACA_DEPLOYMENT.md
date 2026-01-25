@@ -198,7 +198,7 @@ SB_CONNECTION=$(az servicebus namespace authorization-rule keys list \
 DB_SERVER="mysql-xshopai-aca"
 DB_NAME="inventory_service_db"
 DB_USERNAME="xshopaiadmin"
-DB_PASSWORD="<your-secure-password>"  # Use a strong password with special characters
+DB_PASSWORD="xshopaipassword12345!"  # Use a strong password with special characters
 
 # Create MySQL server
 az mysql flexible-server create \
