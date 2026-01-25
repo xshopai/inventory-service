@@ -213,6 +213,33 @@ az mysql flexible-server create \
   --storage-size 32 \
   --public-access 0.0.0.0
 
+# Configure MySQL firewall for local development/seeding
+# Get your current public IP and add it to the firewall rules
+MY_IP=$(curl -s ifconfig.me)
+echo "Your public IP: $MY_IP"
+
+# Add your IP to the firewall rules (for seeding from local machine)
+az mysql flexible-server firewall-rule create \
+  --resource-group $RESOURCE_GROUP \
+  --name $DB_SERVER \
+  --rule-name AllowMyIP \
+  --start-ip-address $MY_IP \
+  --end-ip-address $MY_IP
+
+# Allow Azure services to connect (required for Container Apps)
+az mysql flexible-server firewall-rule create \
+  --resource-group $RESOURCE_GROUP \
+  --name $DB_SERVER \
+  --rule-name AllowAzureServices \
+  --start-ip-address 0.0.0.0 \
+  --end-ip-address 0.0.0.0
+
+# Verify firewall rules
+az mysql flexible-server firewall-rule list \
+  --resource-group $RESOURCE_GROUP \
+  --name $DB_SERVER \
+  --output table
+
 # Create database
 az mysql flexible-server db create \
   --resource-group $RESOURCE_GROUP \
@@ -221,13 +248,20 @@ az mysql flexible-server db create \
 
 # Get connection string (with SSL for Azure MySQL)
 # Note: The ssl_ca path must match the certificate location in the Docker image
-# IMPORTANT: If your password contains special characters (like @, #, $), URL-encode them:
-#   @ -> %40, # -> %23, $ -> %24, etc.
-# Example: password "p@ss" becomes "p%40ss" in the connection string
-DB_CONNECTION="mysql+pymysql://$DB_USERNAME:$DB_PASSWORD@$DB_SERVER.mysql.database.azure.com:3306/$DB_NAME?ssl_ca=/etc/ssl/certs/DigiCertGlobalRootG2.crt.pem"
+# IMPORTANT: If your password contains special characters (like @, #, $, !), URL-encode them:
+#   @ -> %40, # -> %23, $ -> %24, ! -> %21, etc.
+# Example: password "p@ss!" becomes "p%40ss%21" in the connection string
+DB_PASSWORD_ENCODED=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$DB_PASSWORD', safe=''))")
+DB_CONNECTION="mysql+pymysql://$DB_USERNAME:$DB_PASSWORD_ENCODED@$DB_SERVER.mysql.database.azure.com:3306/$DB_NAME?ssl_ca=/etc/ssl/certs/DigiCertGlobalRootG2.crt.pem"
+
+echo "MySQL connection string (sanitized): mysql+pymysql://$DB_USERNAME:***@$DB_SERVER.mysql.database.azure.com:3306/$DB_NAME"
 ```
 
-> **Important**: Azure MySQL Flexible Server requires SSL connections by default. The `ssl_ca` parameter points to the DigiCert Global Root G2 certificate, which is downloaded into the Docker image during build.
+> **Important**:
+>
+> - Azure MySQL Flexible Server requires SSL connections by default. The `ssl_ca` parameter points to the DigiCert Global Root G2 certificate, which is downloaded into the Docker image during build.
+> - **Firewall rules** must be configured to allow your IP for seeding and Azure services for Container Apps.
+> - **URL-encode** special characters in the password when using connection strings.
 
 ### Step 11: Create Dapr Component for Azure Service Bus
 
