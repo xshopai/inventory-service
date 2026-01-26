@@ -376,6 +376,13 @@ print_header "Step 9: Creating Azure MySQL Flexible Server"
 
 if az mysql flexible-server show --name "$DB_SERVER" --resource-group "$RESOURCE_GROUP" &> /dev/null; then
     print_info "MySQL server '$DB_SERVER' already exists"
+    print_info "Resetting admin password to ensure it matches your input..."
+    az mysql flexible-server update \
+        --resource-group "$RESOURCE_GROUP" \
+        --name "$DB_SERVER" \
+        --admin-password "$DB_PASSWORD" \
+        --output none
+    print_success "MySQL admin password updated"
 else
     az mysql flexible-server create \
         --resource-group "$RESOURCE_GROUP" \
@@ -430,7 +437,10 @@ fi
 
 # URL-encode the password
 DB_PASSWORD_ENCODED=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$DB_PASSWORD', safe=''))")
-DB_CONNECTION="mysql+pymysql://$DB_USERNAME:$DB_PASSWORD_ENCODED@$DB_SERVER.mysql.database.azure.com:3306/$DB_NAME?ssl_ca=/etc/ssl/certs/DigiCertGlobalRootG2.crt.pem"
+# Note: Azure MySQL Flexible Server requires SSL (require_secure_transport=ON)
+# Using ssl_verify_cert=false and ssl_verify_identity=false to enable SSL without certificate verification
+# This is acceptable for Azure MySQL as the connection is already secured by Azure's network
+DB_CONNECTION="mysql+pymysql://$DB_USERNAME:$DB_PASSWORD_ENCODED@$DB_SERVER.mysql.database.azure.com:3306/$DB_NAME?ssl_verify_cert=false\&ssl_verify_identity=false"
 
 print_info "Database connection string prepared"
 

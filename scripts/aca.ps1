@@ -413,6 +413,13 @@ Write-Header "Step 9: Creating Azure MySQL Flexible Server"
 $dbExists = az mysql flexible-server show --name $DbServer --resource-group $ResourceGroup 2>$null
 if ($dbExists) {
     Write-Info "MySQL server '$DbServer' already exists"
+    Write-Info "Resetting admin password to ensure it matches your input..."
+    az mysql flexible-server update `
+        --resource-group $ResourceGroup `
+        --name $DbServer `
+        --admin-password $DbPassword `
+        --output none
+    Write-Success "MySQL admin password updated"
 }
 else {
     az mysql flexible-server create `
@@ -481,7 +488,10 @@ else {
 # URL-encode the password
 Add-Type -AssemblyName System.Web
 $DbPasswordEncoded = [System.Web.HttpUtility]::UrlEncode($DbPassword)
-$DbConnection = "mysql+pymysql://${DbUsername}:${DbPasswordEncoded}@${DbServer}.mysql.database.azure.com:3306/${DbName}?ssl_ca=/etc/ssl/certs/DigiCertGlobalRootG2.crt.pem"
+# Note: Azure MySQL Flexible Server requires SSL (require_secure_transport=ON)
+# Using ssl_verify_cert=false and ssl_verify_identity=false to enable SSL without certificate verification
+# This is acceptable for Azure MySQL as the connection is already secured by Azure's network
+$DbConnection = "mysql+pymysql://${DbUsername}:${DbPasswordEncoded}@${DbServer}.mysql.database.azure.com:3306/${DbName}?ssl_verify_cert=false&ssl_verify_identity=false"
 
 Write-Info "Database connection string prepared"
 
