@@ -94,7 +94,7 @@ Write-Header "Configuration"
 
 # Service-specific configuration
 $ServiceName = "inventory-service"
-$AppPort = 8004
+$AppPort = 8005
 $ProjectName = "xshopai"
 
 # Get script and service directories
