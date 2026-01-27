@@ -55,15 +55,15 @@ RUN mkdir -p logs && chown -R inventoryuser:appgroup logs
 # Switch to non-root user
 USER inventoryuser
 
-# Expose port
-EXPOSE 8004
+# Expose port (configurable via PORT env var, default: 8005)
+EXPOSE 8005
 
 # Health check (using Python to avoid curl dependency)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8004/health/ready')" || exit 1
+    CMD python -c "import urllib.request; import os; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\", \"8005\")}/health/ready')" || exit 1
 
 # Start development server with auto-reload
-CMD ["flask", "run", "--host", "0.0.0.0", "--port", "8004", "--reload"]
+CMD sh -c "flask run --host 0.0.0.0 --port ${PORT:-8005} --reload"
 
 # -----------------------------------------------------------------------------
 # Production stage - Optimized for production deployment
@@ -84,16 +84,16 @@ RUN mkdir -p logs && chown -R inventoryuser:appgroup logs
 # Switch to non-root user
 USER inventoryuser
 
-# Expose port
-EXPOSE 8004
+# Expose port (configurable via PORT env var, default: 8005)
+EXPOSE 8005
 
 # Health check (using Python to avoid curl dependency)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8004/health/ready')" || exit 1
+    CMD python -c "import urllib.request; import os; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\", \"8005\")}/health/ready')" || exit 1
 
 # Start production server with gunicorn (workers configurable via WORKERS env var, default: 4)
 # Migrations are run automatically on startup before starting the server
-CMD sh -c "echo 'Running database migrations...' && flask db upgrade && echo 'Migrations complete. Starting server...' && gunicorn --bind 0.0.0.0:8004 --workers ${WORKERS:-4} --timeout 120 run:app"
+CMD sh -c "echo 'Running database migrations...' && flask db upgrade && echo 'Migrations complete. Starting server...' && gunicorn --bind 0.0.0.0:${PORT:-8005} --workers ${WORKERS:-4} --timeout 120 run:app"
 
 # Labels for better image management and security scanning
 LABEL maintainer="xshopai Team"
