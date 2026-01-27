@@ -4,7 +4,7 @@
     {
       "label": "dapr-start-inventory",
       "type": "shell",
-      "command": "dapr run --app-id inventory-service --app-port 1005 --dapr-http-port 3505 --dapr-grpc-port 50005 --log-level warn --config ./.dapr/config.yaml --resources-path ./.dapr/components",
+      "command": "dapr run --app-id inventory-service --app-port 8005 --dapr-http-port 3505 --dapr-grpc-port 50005 --log-level warn --config ./.dapr/config.yaml --resources-path ./.dapr/components",
       "isBackground": true,
       "problemMatcher": {
         "pattern": [
