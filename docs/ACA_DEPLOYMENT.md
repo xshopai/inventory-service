@@ -1,19 +1,64 @@
 # Azure Container Apps Deployment Guide
 
-This guide provides step-by-step instructions for deploying the Inventory Service to **Azure Container Apps** with built-in Dapr support.
+This guide provides step-by-step instructions for deploying the **Inventory Service** to **Azure Container Apps** with built-in Dapr support.
 
 ---
 
 ## Prerequisites
 
-- **Azure CLI** installed - [Install Azure CLI](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli)
-- **Azure Subscription** with appropriate permissions
-- **Docker** installed for building container images
-- **Azure Container Registry** (or Docker Hub account)
+### 1. Infrastructure Deployment (Required First)
+
+Before deploying any service, you must deploy the shared infrastructure using the centralized deployment script:
+
+```bash
+cd infrastructure/azure/aca/scripts
+./deploy-infra.sh
+```
+
+This script creates all shared resources:
+
+- **Resource Group** - Container for all resources
+- **Azure Container Registry (ACR)** - Docker image storage
+- **Container Apps Environment** - Serverless container runtime with Dapr
+- **Azure Service Bus** - Event messaging (Dapr pub/sub)
+- **Azure Cache for Redis** - Caching and state store
+- **Azure Cosmos DB** - Document database
+- **Azure MySQL Flexible Server** - Relational database
+- **Azure Key Vault** - Secrets management
+- **Azure Storage Account** - Blob storage
+- **Managed Identity** - Secure access to Azure resources
+- **Dapr Components** - Pre-configured pubsub, statestore, secretstore
+
+**Important**: Note the **suffix** used during infrastructure deployment. You'll need it for service deployments.
+
+### 2. Local Tools
+
+- **Azure CLI** - [Install Azure CLI](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli)
+- **Docker** - For building container images
+- **Python 3** - For URL encoding (used in connection strings)
 
 ---
 
-## Step-by-Step Deployment
+## Quick Start (Automated)
+
+The fastest way to deploy is using the automated script:
+
+```bash
+cd inventory-service/scripts
+./aca.sh
+```
+
+The script will:
+
+1. Prompt for environment (dev/staging/prod) and infrastructure suffix
+2. Verify infrastructure exists
+3. Build and push the Docker image
+4. Create/update the Container App
+5. Configure environment variables and Dapr integration
+
+---
+
+## Manual Deployment Steps
 
 ### Step 1: Login to Azure
 
@@ -28,350 +73,127 @@ az account set --subscription "<subscription-id>"
 az account show
 ```
 
-### Step 2: Create Resource Group
+### Step 2: Set Variables
 
 ```bash
-# Set variables (shared across all xshopai services)
-RESOURCE_GROUP="rg-xshopai-aca"
-LOCATION="swedencentral"
+# Environment and suffix (must match infrastructure deployment)
+ENVIRONMENT="dev"
+SUFFIX="abc1"  # Your infrastructure suffix
+PROJECT_NAME="xshopai"
 
-# Create resource group (idempotent - safe to run if already exists)
-az group create \
-  --name $RESOURCE_GROUP \
-  --location $LOCATION
+# Derived resource names
+RESOURCE_GROUP="rg-${PROJECT_NAME}-${ENVIRONMENT}-${SUFFIX}"
+ACR_NAME="${PROJECT_NAME}${ENVIRONMENT}${SUFFIX}"
+CONTAINER_ENV="cae-${PROJECT_NAME}-${ENVIRONMENT}-${SUFFIX}"
+MYSQL_SERVER="mysql-${PROJECT_NAME}-${ENVIRONMENT}-${SUFFIX}"
+KEY_VAULT="kv-${PROJECT_NAME}-${ENVIRONMENT}-${SUFFIX}"
+
+# Service-specific
+SERVICE_NAME="inventory-service"
+APP_PORT=8004
+DB_NAME="inventory_db"
 ```
 
-### Step 3: Create Azure Container Registry
+### Step 3: Verify Infrastructure Exists
 
 ```bash
-# Set ACR name (ACA-specific, must be globally unique)
-ACR_NAME="acrxshopaiaca"
+# Check resource group
+az group show --name $RESOURCE_GROUP
 
-# Create container registry (skip if already created by another service)
-# This command is NOT idempotent - it will fail if ACR already exists
-# You can safely ignore "already exists" errors
-az acr create \
+# Check ACR
+az acr show --name $ACR_NAME
+ACR_LOGIN_SERVER=$(az acr show --name $ACR_NAME --query loginServer -o tsv)
+
+# Check Container Apps Environment
+az containerapp env show --name $CONTAINER_ENV --resource-group $RESOURCE_GROUP
+
+# Check MySQL Server
+az mysql flexible-server show --name $MYSQL_SERVER --resource-group $RESOURCE_GROUP
+MYSQL_HOST=$(az mysql flexible-server show --name $MYSQL_SERVER --resource-group $RESOURCE_GROUP --query fullyQualifiedDomainName -o tsv)
+```
+
+### Step 4: Create Service Database
+
+```bash
+# Create inventory database (if not exists)
+az mysql flexible-server db create \
   --resource-group $RESOURCE_GROUP \
-  --name $ACR_NAME \
-  --sku Basic \
-  --admin-enabled true
-
-# Get ACR login server
-ACR_LOGIN_SERVER=$(az acr show --name $ACR_NAME --query loginServer --output tsv)
-echo "ACR Login Server: $ACR_LOGIN_SERVER"
+  --server-name $MYSQL_SERVER \
+  --database-name $DB_NAME
 ```
 
-### Step 4: Build and Push Container Image
+### Step 5: Build and Push Container Image
 
 ```bash
 # Login to ACR
 az acr login --name $ACR_NAME
 
-# Build Docker image
-docker build -t inventory-service:latest .
+# Build Docker image (from inventory-service directory)
+docker build -t $SERVICE_NAME:latest .
 
-# Tag image for ACR
-docker tag inventory-service:latest $ACR_LOGIN_SERVER/inventory-service:latest
+# Tag and push
+docker tag $SERVICE_NAME:latest $ACR_LOGIN_SERVER/$SERVICE_NAME:latest
+docker push $ACR_LOGIN_SERVER/$SERVICE_NAME:latest
 
-# Push to ACR
-docker push $ACR_LOGIN_SERVER/inventory-service:latest
-
-# Verify image was pushed
+# Verify
 az acr repository list --name $ACR_NAME --output table
 ```
 
-### Step 5: Register Resource Providers
+### Step 6: Configure Database Connection
 
 ```bash
-# Register required resource providers (one-time per subscription)
-az provider register --namespace microsoft.operationalinsights --wait
-az provider register --namespace microsoft.insights --wait
-az provider register --namespace Microsoft.App --wait
-az provider register --namespace Microsoft.ServiceBus --wait
+# Get MySQL password from Key Vault
+MYSQL_PASSWORD=$(az keyvault secret show --vault-name $KEY_VAULT --name "mysql-password" --query value -o tsv)
+MYSQL_USERNAME="xshopaiadmin"
 
-# Verify registration status
-az provider show --namespace microsoft.operationalinsights --query "registrationState" --output tsv
-az provider show --namespace microsoft.insights --query "registrationState" --output tsv
+# URL-encode password (handles special characters)
+DB_PASSWORD_ENCODED=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$MYSQL_PASSWORD', safe=''))")
+
+# Build connection string
+DB_CONNECTION="mysql+pymysql://$MYSQL_USERNAME:$DB_PASSWORD_ENCODED@$MYSQL_HOST:3306/$DB_NAME?ssl_verify_cert=false&ssl_verify_identity=false"
 ```
 
-> **Note**: Provider registration can take 1-2 minutes. The `--wait` flag ensures the command waits for registration to complete.
-
-### Step 6: Create Application Insights
+### Step 7: Deploy Container App
 
 ```bash
-# Create Application Insights (ACA-specific)
-AI_NAME="ai-xshopai-aca"
-
-az monitor app-insights component create \
-  --app $AI_NAME \
-  --location $LOCATION \
-  --resource-group $RESOURCE_GROUP
-
-# Get instrumentation key (needed for Container Apps Environment)
-AI_KEY=$(az monitor app-insights component show \
-  --app $AI_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --query instrumentationKey \
-  --output tsv)
-
-echo "App Insights Key: $AI_KEY"
-```
-
-### Step 7: Create Log Analytics Workspace
-
-```bash
-# Set Log Analytics workspace name (shared across all xshopai services)
-LOG_ANALYTICS_WORKSPACE="law-xshopai-aca"
-
-# Create Log Analytics workspace (skip if already exists)
-az monitor log-analytics workspace create \
-  --resource-group $RESOURCE_GROUP \
-  --workspace-name $LOG_ANALYTICS_WORKSPACE \
-  --location $LOCATION
-
-# Get workspace ID and key (needed for Container Apps Environment)
-LOG_ANALYTICS_WORKSPACE_ID=$(az monitor log-analytics workspace show \
-  --resource-group $RESOURCE_GROUP \
-  --workspace-name $LOG_ANALYTICS_WORKSPACE \
-  --query customerId \
-  --output tsv)
-
-LOG_ANALYTICS_KEY=$(az monitor log-analytics workspace get-shared-keys \
-  --resource-group $RESOURCE_GROUP \
-  --workspace-name $LOG_ANALYTICS_WORKSPACE \
-  --query primarySharedKey \
-  --output tsv)
-
-echo "Log Analytics Workspace ID: $LOG_ANALYTICS_WORKSPACE_ID"
-```
-
-### Step 8: Create Container Apps Environment
-
-```bash
-# Set environment name (ACA-specific)
-ENVIRONMENT_NAME="cae-xshopai-aca"
-
-# Create Container Apps environment with Dapr enabled
-# Skip if already created by another service - will fail with "already exists" error
-az containerapp env create \
-  --name $ENVIRONMENT_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --location $LOCATION \
-  --dapr-instrumentation-key $AI_KEY \
-  --logs-workspace-id $LOG_ANALYTICS_WORKSPACE_ID \
-  --logs-workspace-key $LOG_ANALYTICS_KEY \
-  --enable-workload-profiles false
-```
-
-### Step 9: Create Azure Service Bus (for messaging)
-
-```bash
-# Set Service Bus namespace (ACA-specific)
-SB_NAMESPACE="sb-xshopai-aca"
-
-# Create Service Bus namespace (skip if already exists)
-az servicebus namespace create \
-  --name $SB_NAMESPACE \
-  --resource-group $RESOURCE_GROUP \
-  --location $LOCATION \
-  --sku Standard
-
-# Create topic for inventory events
-az servicebus topic create \
-  --name inventory-events \
-  --namespace-name $SB_NAMESPACE \
-  --resource-group $RESOURCE_GROUP
-
-# Get connection string
-SB_CONNECTION=$(az servicebus namespace authorization-rule keys list \
-  --namespace-name $SB_NAMESPACE \
-  --resource-group $RESOURCE_GROUP \
-  --name RootManageSharedAccessKey \
-  --query primaryConnectionString \
-  --output tsv)
-```
-
-### Step 10: Create Azure Database for MySQL
-
-```bash
-# Set database server name (ACA-specific, can host multiple databases for different services)
-DB_SERVER="mysql-xshopai-aca"
-DB_NAME="inventory_service_db"
-DB_USERNAME="xshopaiadmin"
-DB_PASSWORD="xshopaipassword12345!"  # Use a strong password with special characters
-
-# Create MySQL server
-az mysql flexible-server create \
-  --resource-group $RESOURCE_GROUP \
-  --name $DB_SERVER \
-  --location $LOCATION \
-  --admin-user $DB_USERNAME \
-  --admin-password $DB_PASSWORD \
-  --sku-name Standard_B1ms \
-  --tier Burstable \
-  --version 8.0.21 \
-  --storage-size 32 \
-  --public-access 0.0.0.0
-
-# Configure MySQL firewall for local development/seeding
-# Get your current public IP and add it to the firewall rules
-MY_IP=$(curl -s ifconfig.me)
-echo "Your public IP: $MY_IP"
-
-# Add your IP to the firewall rules (for seeding from local machine)
-az mysql flexible-server firewall-rule create \
-  --resource-group $RESOURCE_GROUP \
-  --name $DB_SERVER \
-  --rule-name AllowMyIP \
-  --start-ip-address $MY_IP \
-  --end-ip-address $MY_IP
-
-# Allow Azure services to connect (required for Container Apps)
-az mysql flexible-server firewall-rule create \
-  --resource-group $RESOURCE_GROUP \
-  --name $DB_SERVER \
-  --rule-name AllowAzureServices \
-  --start-ip-address 0.0.0.0 \
-  --end-ip-address 0.0.0.0
-
-# Verify firewall rules
-az mysql flexible-server firewall-rule list \
-  --resource-group $RESOURCE_GROUP \
-  --name $DB_SERVER \
-  --output table
-
-# Create database
-az mysql flexible-server db create \
-  --resource-group $RESOURCE_GROUP \
-  --server-name $DB_SERVER \
-  --database-name $DB_NAME
-
-# Get connection string (with SSL for Azure MySQL)
-# Note: The ssl_ca path must match the certificate location in the Docker image
-# IMPORTANT: If your password contains special characters (like @, #, $, !), URL-encode them:
-#   @ -> %40, # -> %23, $ -> %24, ! -> %21, etc.
-# Example: password "p@ss!" becomes "p%40ss%21" in the connection string
-DB_PASSWORD_ENCODED=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$DB_PASSWORD', safe=''))")
-DB_CONNECTION="mysql+pymysql://$DB_USERNAME:$DB_PASSWORD_ENCODED@$DB_SERVER.mysql.database.azure.com:3306/$DB_NAME?ssl_ca=/etc/ssl/certs/DigiCertGlobalRootG2.crt.pem"
-
-echo "MySQL connection string (sanitized): mysql+pymysql://$DB_USERNAME:***@$DB_SERVER.mysql.database.azure.com:3306/$DB_NAME"
-```
-
-> **Important**:
->
-> - Azure MySQL Flexible Server requires SSL connections by default. The `ssl_ca` parameter points to the DigiCert Global Root G2 certificate, which is downloaded into the Docker image during build.
-> - **Firewall rules** must be configured to allow your IP for seeding and Azure services for Container Apps.
-> - **URL-encode** special characters in the password when using connection strings.
-
-### Step 11: Create Dapr Component for Azure Service Bus
-
-The local `.dapr/components/event-bus.yaml` is configured for RabbitMQ. For Azure Container Apps, create an Azure Service Bus component in the same folder:
-
-```bash
-# Create Azure Service Bus component file in .dapr/components folder
-cat > .dapr/components/dapr-servicebus-component.yaml << EOF
-componentType: pubsub.azure.servicebus.topics
-version: v1
-metadata:
-  - name: connectionString
-    value: '$SB_CONNECTION'
-  - name: consumerID
-    value: inventory-service
-scopes:
-  - inventory-service
-EOF
-
-# Verify the file
-cat .dapr/components/dapr-servicebus-component.yaml
-```
-
-> **Note**:
->
-> - Local development uses RabbitMQ (`.dapr/components/event-bus.yaml`)
-> - Azure Container Apps uses Azure Service Bus (`.dapr/components/dapr-servicebus-component.yaml`)
-> - The `$SB_CONNECTION` variable was set in Step 9
-
-### Step 12: Deploy Container App
-
-```bash
-# Set app name
-APP_NAME="inventory-service"
-
 # Get ACR credentials
-ACR_PASSWORD=$(az acr credential show --name $ACR_NAME --query passwords[0].value --output tsv)
+ACR_PASSWORD=$(az acr credential show --name $ACR_NAME --query "passwords[0].value" -o tsv)
 
-# Create container app
+# Deploy container app
 az containerapp create \
-  --name $APP_NAME \
+  --name $SERVICE_NAME \
   --resource-group $RESOURCE_GROUP \
-  --environment $ENVIRONMENT_NAME \
-  --image $ACR_LOGIN_SERVER/inventory-service:latest \
+  --environment $CONTAINER_ENV \
+  --image $ACR_LOGIN_SERVER/$SERVICE_NAME:latest \
   --registry-server $ACR_LOGIN_SERVER \
   --registry-username $ACR_NAME \
   --registry-password $ACR_PASSWORD \
-  --target-port 8004 \
+  --target-port $APP_PORT \
   --ingress external \
   --min-replicas 1 \
   --max-replicas 5 \
   --cpu 0.5 \
   --memory 1.0Gi \
   --enable-dapr \
-  --dapr-app-id inventory-service \
-  --dapr-app-port 8004 \
+  --dapr-app-id $SERVICE_NAME \
+  --dapr-app-port $APP_PORT \
   --env-vars \
     "FLASK_ENV=production" \
     "DATABASE_URL=$DB_CONNECTION" \
     "MESSAGING_PROVIDER=dapr" \
-    "DAPR_PUBSUB_NAME=inventory-pubsub" \
-    "PRODUCT_SERVICE_TOKEN=<your-product-service-token>" \
-    "ORDER_SERVICE_TOKEN=<your-order-service-token>" \
-    "CART_SERVICE_TOKEN=<your-cart-service-token>" \
-    "WEB_BFF_TOKEN=<your-web-bff-token>"
+    "DAPR_PUBSUB_NAME=pubsub"
 ```
 
-### Step 13: Configure Dapr Component in Container Apps
+### Step 8: Verify Deployment
 
 ```bash
-# Create Dapr pub/sub component (using the file created in Step 11)
-az containerapp env dapr-component set \
-  --name $ENVIRONMENT_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --dapr-component-name inventory-pubsub \
-  --yaml .dapr/components/dapr-servicebus-component.yaml
-```
-
-### Step 14: Run Database Migrations
-
-```bash
-# Get container app URL
+# Get application URL
 APP_URL=$(az containerapp show \
-  --name $APP_NAME \
+  --name $SERVICE_NAME \
   --resource-group $RESOURCE_GROUP \
   --query properties.configuration.ingress.fqdn \
-  --output tsv)
+  -o tsv)
 
-# SSH into container (if needed)
-az containerapp exec \
-  --name $APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --command "/bin/bash"
-
-# Inside container, run migrations
-flask db upgrade
-```
-
-**Alternative:** Run migrations as a Job before deploying the app.
-
-### Step 15: Verify Deployment
-
-```bash
-# Check app status
-az containerapp show \
-  --name $APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --query properties.runningStatus
-
-# Get application URL
 echo "Application URL: https://$APP_URL"
 
 # Test health endpoint
@@ -380,91 +202,198 @@ curl https://$APP_URL/health
 
 ---
 
-## Configure Secrets (Production)
+## Dapr Integration
 
-### Using Azure Key Vault
+The infrastructure deployment pre-configures Dapr components that are available to all services:
 
-```bash
-# Create Key Vault (ACA-specific)
-KV_NAME="kv-xshopai-aca"
+### Available Dapr Components
 
-az keyvault create \
-  --name $KV_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --location $LOCATION
+| Component    | Name          | Type                           | Backend               |
+| ------------ | ------------- | ------------------------------ | --------------------- |
+| Pub/Sub      | `pubsub`      | pubsub.azure.servicebus.queues | Azure Service Bus     |
+| State Store  | `statestore`  | state.redis                    | Azure Cache for Redis |
+| Secret Store | `secretstore` | secretstores.azure.keyvault    | Azure Key Vault       |
 
-# Store secrets
-az keyvault secret set --vault-name $KV_NAME --name "database-url" --value "$DB_CONNECTION"
-az keyvault secret set --vault-name $KV_NAME --name "jwt-secret" --value "<jwt-secret>"
-az keyvault secret set --vault-name $KV_NAME --name "product-service-token" --value "<token>"
+### Using Dapr in Inventory Service
 
-# Grant Container App access to Key Vault
-# Enable managed identity first
-az containerapp identity assign \
-  --name $APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --system-assigned
+The service is pre-configured to use Dapr for messaging:
 
-# Get principal ID
-PRINCIPAL_ID=$(az containerapp identity show \
-  --name $APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --query principalId \
-  --output tsv)
+```python
+# Environment variable
+DAPR_PUBSUB_NAME=pubsub
 
-# Grant Key Vault access
-az keyvault set-policy \
-  --name $KV_NAME \
-  --object-id $PRINCIPAL_ID \
-  --secret-permissions get list
+# Publishing events
+dapr_client.publish_event(
+    pubsub_name="pubsub",
+    topic_name="inventory.updated",
+    data={"sku": "ABC123", "quantity": 50}
+)
+
+# Subscribing to events (via HTTP endpoint)
+@app.route('/dapr/subscribe', methods=['GET'])
+def subscribe():
+    return jsonify([
+        {"pubsubname": "pubsub", "topic": "order.created", "route": "/events/order-created"}
+    ])
 ```
 
 ---
 
-## Monitoring and Observability
+## Environment Variables
 
-### View Application Logs
+| Variable             | Description                 | Example               |
+| -------------------- | --------------------------- | --------------------- |
+| `FLASK_ENV`          | Flask environment           | `production`          |
+| `DATABASE_URL`       | MySQL connection string     | `mysql+pymysql://...` |
+| `MESSAGING_PROVIDER` | Messaging backend           | `dapr`                |
+| `DAPR_PUBSUB_NAME`   | Dapr pub/sub component name | `pubsub`              |
+
+---
+
+## Updating the Service
+
+To deploy a new version:
 
 ```bash
-# Stream logs
+# Build and push new image
+docker build -t $SERVICE_NAME:latest .
+docker tag $SERVICE_NAME:latest $ACR_LOGIN_SERVER/$SERVICE_NAME:latest
+docker push $ACR_LOGIN_SERVER/$SERVICE_NAME:latest
+
+# Update container app (pulls latest image)
+az containerapp update \
+  --name $SERVICE_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --image $ACR_LOGIN_SERVER/$SERVICE_NAME:latest
+```
+
+---
+
+## Monitoring
+
+### View Logs
+
+```bash
+# Application logs
 az containerapp logs show \
-  --name $APP_NAME \
+  --name $SERVICE_NAME \
   --resource-group $RESOURCE_GROUP \
   --follow
 
-# View Dapr sidecar logs
+# Dapr sidecar logs
 az containerapp logs show \
-  --name $APP_NAME \
+  --name $SERVICE_NAME \
   --resource-group $RESOURCE_GROUP \
   --container daprd \
   --follow
 ```
 
-### Application Insights Integration
+### Application Insights
 
-Application Insights was created in Step 5. To add it to the container app's environment variables:
+Application Insights is configured at the Container Apps Environment level. Traces, metrics, and logs are automatically collected.
+
+View in Azure Portal:
+
+1. Navigate to the Resource Group
+2. Open the Log Analytics Workspace (`law-xshopai-{env}-{suffix}`)
+3. Query container app logs using KQL
+
+---
+
+## Scaling
+
+### Manual Scaling
 
 ```bash
-# Update container app with App Insights connection string
+# Scale to specific replica count
 az containerapp update \
-  --name $APP_NAME \
+  --name $SERVICE_NAME \
   --resource-group $RESOURCE_GROUP \
-  --set-env-vars "APPLICATIONINSIGHTS_CONNECTION_STRING=InstrumentationKey=$AI_KEY"
+  --min-replicas 2 \
+  --max-replicas 10
 ```
 
-## Cleanup Resources
+### Auto-scaling Rules
+
+The default configuration scales based on HTTP traffic (1-5 replicas). Custom rules can be added:
 
 ```bash
-# Delete container app (safe - only removes inventory-service)
+az containerapp update \
+  --name $SERVICE_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --scale-rule-name http-rule \
+  --scale-rule-type http \
+  --scale-rule-http-concurrency 100
+```
+
+---
+
+## Cleanup
+
+### Delete Service Only
+
+```bash
+# Remove inventory-service (keeps infrastructure)
 az containerapp delete \
-  --name $APP_NAME \
+  --name $SERVICE_NAME \
   --resource-group $RESOURCE_GROUP \
   --yes
-
-# Delete entire ACA deployment (all xshopai services in ACA)
-# az group delete --name $RESOURCE_GROUP --yes
 ```
 
+### Delete All Infrastructure
+
+```bash
+# WARNING: Deletes ALL xshopai resources in this environment
+az group delete --name $RESOURCE_GROUP --yes
 ```
 
-```
+---
+
+## Troubleshooting
+
+### Container Won't Start
+
+1. Check container logs:
+
+   ```bash
+   az containerapp logs show --name $SERVICE_NAME --resource-group $RESOURCE_GROUP
+   ```
+
+2. Verify image exists in ACR:
+
+   ```bash
+   az acr repository show-tags --name $ACR_NAME --repository $SERVICE_NAME
+   ```
+
+3. Check environment variables are set correctly
+
+### Database Connection Fails
+
+1. Verify MySQL firewall allows Azure services:
+
+   ```bash
+   az mysql flexible-server firewall-rule list --name $MYSQL_SERVER --resource-group $RESOURCE_GROUP -o table
+   ```
+
+2. Check connection string format (special characters must be URL-encoded)
+
+3. Verify SSL settings match Azure MySQL requirements
+
+### Dapr Component Not Found
+
+1. Verify component exists:
+
+   ```bash
+   az containerapp env dapr-component list --name $CONTAINER_ENV --resource-group $RESOURCE_GROUP -o table
+   ```
+
+2. Check component scopes include the service
+
+---
+
+## Related Documentation
+
+- [Infrastructure Deployment](../../../../infrastructure/azure/aca/docs/README.md)
+- [Local Development](./LOCAL_DEVELOPMENT.md)
+- [Local Development with Dapr](./LOCAL_DEVELOPMENT_DAPR.md)
+- [Architecture](./ARCHITECTURE.md)

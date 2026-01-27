@@ -3,24 +3,35 @@
 # ============================================================================
 # Azure Container Apps Deployment Script for Inventory Service
 # ============================================================================
-# This script automates the deployment of Inventory Service to Azure Container Apps
-# with Dapr support, Azure Service Bus, and Azure MySQL Flexible Server.
+# This script deploys the Inventory Service to Azure Container Apps.
+# 
+# PREREQUISITE: Run the infrastructure deployment script first:
+#   cd infrastructure/azure/aca/scripts
+#   ./deploy-infra.sh
+#
+# The infrastructure script creates all shared resources:
+#   - Resource Group, ACR, Container Apps Environment
+#   - Service Bus, Redis, Cosmos DB, MySQL, Key Vault
+#   - Dapr components (pubsub, statestore, secretstore)
 # ============================================================================
 
 set -e
 
+# -----------------------------------------------------------------------------
 # Colors for output
+# -----------------------------------------------------------------------------
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Print functions
 print_header() {
-    echo -e "\n${BLUE}============================================================================${NC}"
+    echo -e "\n${BLUE}==============================================================================${NC}"
     echo -e "${BLUE}$1${NC}"
-    echo -e "${BLUE}============================================================================${NC}\n"
+    echo -e "${BLUE}==============================================================================${NC}\n"
 }
 
 print_success() {
@@ -36,7 +47,7 @@ print_error() {
 }
 
 print_info() {
-    echo -e "${BLUE}ℹ $1${NC}"
+    echo -e "${CYAN}ℹ $1${NC}"
 }
 
 # ============================================================================
@@ -66,115 +77,183 @@ fi
 print_success "Logged into Azure"
 
 # ============================================================================
-# User Input Collection
+# Configuration
 # ============================================================================
-print_header "Azure Configuration"
+print_header "Configuration"
 
-# Function to prompt with default value
-prompt_with_default() {
-    local prompt="$1"
-    local default="$2"
-    local varname="$3"
-    
-    read -p "$prompt [$default]: " input
-    eval "$varname=\"${input:-$default}\""
-}
+# Service-specific configuration
+SERVICE_NAME="inventory-service"
+APP_PORT=8004
+PROJECT_NAME="xshopai"
 
-# Function to prompt for password (hidden input)
-prompt_password() {
-    local prompt="$1"
-    local varname="$2"
-    
-    read -sp "$prompt: " input
-    echo ""
-    eval "$varname=\"$input\""
-}
+# Get script directory and service directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SERVICE_DIR="$(dirname "$SCRIPT_DIR")"
 
-# List available subscriptions
-echo -e "\n${BLUE}Available Azure Subscriptions:${NC}"
-az account list --query "[].{Name:name, SubscriptionId:id, IsDefault:isDefault}" --output table
-
+# ============================================================================
+# Environment Selection
+# ============================================================================
+echo -e "${CYAN}Available Environments:${NC}"
+echo "   dev     - Development environment"
+echo "   staging - Staging/QA environment"
+echo "   prod    - Production environment"
 echo ""
-prompt_with_default "Enter Azure Subscription ID (leave empty for default)" "" SUBSCRIPTION_ID
 
-if [ -n "$SUBSCRIPTION_ID" ]; then
-    az account set --subscription "$SUBSCRIPTION_ID"
-    print_success "Subscription set to: $SUBSCRIPTION_ID"
-else
-    SUBSCRIPTION_ID=$(az account show --query id --output tsv)
-    print_info "Using default subscription: $SUBSCRIPTION_ID"
+read -p "Enter environment (dev/staging/prod) [dev]: " ENVIRONMENT
+ENVIRONMENT="${ENVIRONMENT:-dev}"
+
+if [[ ! "$ENVIRONMENT" =~ ^(dev|staging|prod)$ ]]; then
+    print_error "Invalid environment: $ENVIRONMENT"
+    echo "   Valid values: dev, staging, prod"
+    exit 1
+fi
+print_success "Environment: $ENVIRONMENT"
+
+# ============================================================================
+# Suffix Configuration
+# ============================================================================
+print_header "Infrastructure Configuration"
+
+echo -e "${CYAN}The suffix was set during infrastructure deployment.${NC}"
+echo "You can find it by running:"
+echo -e "   ${BLUE}az group list --query \"[?starts_with(name, 'rg-xshopai-$ENVIRONMENT')].{Name:name, Suffix:tags.suffix}\" -o table${NC}"
+echo ""
+
+read -p "Enter the infrastructure suffix: " SUFFIX
+
+if [ -z "$SUFFIX" ]; then
+    print_error "Suffix is required. Please run the infrastructure deployment first."
+    exit 1
 fi
 
-# Resource Group
-echo ""
-prompt_with_default "Enter Resource Group name" "rg-xshopai-aca" RESOURCE_GROUP
+# Validate suffix format
+if [[ ! "$SUFFIX" =~ ^[a-z0-9]{3,6}$ ]]; then
+    print_error "Invalid suffix format: $SUFFIX"
+    echo "   Suffix must be 3-6 lowercase alphanumeric characters."
+    exit 1
+fi
+print_success "Using suffix: $SUFFIX"
 
-# Location
-echo ""
-echo -e "${BLUE}Common Azure Locations:${NC}"
-echo "  - swedencentral (Sweden Central)"
-echo "  - eastus (East US)"
-echo "  - westus2 (West US 2)"
-echo "  - westeurope (West Europe)"
-echo "  - northeurope (North Europe)"
-prompt_with_default "Enter Azure Location" "swedencentral" LOCATION
+# ============================================================================
+# Derive Resource Names from Infrastructure
+# ============================================================================
+# These names must match what was created by deploy-infra.sh
+RESOURCE_GROUP="rg-${PROJECT_NAME}-${ENVIRONMENT}-${SUFFIX}"
+ACR_NAME="${PROJECT_NAME}${ENVIRONMENT}${SUFFIX}"
+CONTAINER_ENV="cae-${PROJECT_NAME}-${ENVIRONMENT}-${SUFFIX}"
+MYSQL_SERVER="mysql-${PROJECT_NAME}-${ENVIRONMENT}-${SUFFIX}"
+KEY_VAULT="kv-${PROJECT_NAME}-${ENVIRONMENT}-${SUFFIX}"
+MANAGED_IDENTITY="id-${PROJECT_NAME}-${ENVIRONMENT}-${SUFFIX}"
 
-# Azure Container Registry
+print_info "Derived resource names:"
+echo "   Resource Group:      $RESOURCE_GROUP"
+echo "   Container Registry:  $ACR_NAME"
+echo "   Container Env:       $CONTAINER_ENV"
+echo "   MySQL Server:        $MYSQL_SERVER"
+echo "   Key Vault:           $KEY_VAULT"
 echo ""
-prompt_with_default "Enter Azure Container Registry name (must be globally unique)" "acrxshopaiaca" ACR_NAME
 
-# Container Apps Environment
-echo ""
-prompt_with_default "Enter Container Apps Environment name" "cae-xshopai-aca" ENVIRONMENT_NAME
+# ============================================================================
+# Verify Infrastructure Exists
+# ============================================================================
+print_header "Verifying Infrastructure"
 
-# Application Insights
-echo ""
-prompt_with_default "Enter Application Insights name" "ai-xshopai-aca" AI_NAME
+# Check Resource Group
+if ! az group show --name "$RESOURCE_GROUP" &> /dev/null; then
+    print_error "Resource group '$RESOURCE_GROUP' does not exist."
+    echo ""
+    echo "Please run the infrastructure deployment first:"
+    echo -e "   ${BLUE}cd infrastructure/azure/aca/scripts${NC}"
+    echo -e "   ${BLUE}./deploy-infra.sh${NC}"
+    exit 1
+fi
+print_success "Resource Group exists: $RESOURCE_GROUP"
 
-# Log Analytics Workspace
-echo ""
-prompt_with_default "Enter Log Analytics Workspace name" "law-xshopai-aca" LOG_ANALYTICS_WORKSPACE
+# Check ACR
+if ! az acr show --name "$ACR_NAME" &> /dev/null; then
+    print_error "Container Registry '$ACR_NAME' does not exist."
+    exit 1
+fi
+ACR_LOGIN_SERVER=$(az acr show --name "$ACR_NAME" --query loginServer -o tsv)
+print_success "Container Registry exists: $ACR_LOGIN_SERVER"
 
-# Service Bus
-echo ""
-prompt_with_default "Enter Service Bus namespace name (must be globally unique)" "sb-xshopai-aca" SB_NAMESPACE
+# Check Container Apps Environment
+if ! az containerapp env show --name "$CONTAINER_ENV" --resource-group "$RESOURCE_GROUP" &> /dev/null; then
+    print_error "Container Apps Environment '$CONTAINER_ENV' does not exist."
+    exit 1
+fi
+print_success "Container Apps Environment exists: $CONTAINER_ENV"
 
-# MySQL Configuration
-echo ""
-prompt_with_default "Enter MySQL Server name (must be globally unique)" "mysql-xshopai-aca" DB_SERVER
-prompt_with_default "Enter MySQL Database name" "inventory_service_db" DB_NAME
-prompt_with_default "Enter MySQL Admin Username" "xshopaiadmin" DB_USERNAME
-echo ""
-print_warning "Password must be at least 8 characters and include: uppercase, lowercase, number, and special character"
-prompt_password "Enter MySQL Admin Password" DB_PASSWORD
+# Check MySQL Server
+if ! az mysql flexible-server show --name "$MYSQL_SERVER" --resource-group "$RESOURCE_GROUP" &> /dev/null; then
+    print_error "MySQL Server '$MYSQL_SERVER' does not exist."
+    exit 1
+fi
+MYSQL_HOST=$(az mysql flexible-server show --name "$MYSQL_SERVER" --resource-group "$RESOURCE_GROUP" --query fullyQualifiedDomainName -o tsv)
+print_success "MySQL Server exists: $MYSQL_HOST"
 
-# Service Tokens (optional)
-echo ""
-print_info "Service tokens are used for inter-service authentication (optional for initial deployment)"
-prompt_with_default "Enter Product Service Token" "" PRODUCT_SERVICE_TOKEN
-prompt_with_default "Enter Order Service Token" "" ORDER_SERVICE_TOKEN
-prompt_with_default "Enter Cart Service Token" "" CART_SERVICE_TOKEN
-prompt_with_default "Enter Web BFF Token" "" WEB_BFF_TOKEN
+# Get Managed Identity ID
+# Note: MSYS_NO_PATHCONV=1 prevents Git Bash from converting /subscriptions/... paths on Windows
+IDENTITY_ID=$(MSYS_NO_PATHCONV=1 az identity show --name "$MANAGED_IDENTITY" --resource-group "$RESOURCE_GROUP" --query id -o tsv 2>/dev/null || echo "")
+if [ -z "$IDENTITY_ID" ]; then
+    print_warning "Managed Identity not found, will deploy without it"
+else
+    print_success "Managed Identity exists: $MANAGED_IDENTITY"
+fi
 
-# App name
-APP_NAME="inventory-service"
+# ============================================================================
+# Database Configuration
+# ============================================================================
+print_header "Database Configuration"
+
+DB_NAME="inventory_service_db"
+print_info "Database name: $DB_NAME"
+
+# Check if database exists, create if not
+if az mysql flexible-server db show --resource-group "$RESOURCE_GROUP" --server-name "$MYSQL_SERVER" --database-name "$DB_NAME" &> /dev/null; then
+    print_success "Database '$DB_NAME' already exists"
+else
+    print_info "Creating database '$DB_NAME'..."
+    az mysql flexible-server db create \
+        --resource-group "$RESOURCE_GROUP" \
+        --server-name "$MYSQL_SERVER" \
+        --database-name "$DB_NAME" \
+        --output none
+    print_success "Database '$DB_NAME' created"
+fi
+
+# Get MySQL credentials from Key Vault
+print_info "Retrieving MySQL credentials from Key Vault..."
+MYSQL_PASSWORD=$(az keyvault secret show --vault-name "$KEY_VAULT" --name "mysql-password" --query value -o tsv 2>/dev/null || echo "")
+
+if [ -z "$MYSQL_PASSWORD" ]; then
+    print_warning "Could not retrieve MySQL password from Key Vault"
+    read -sp "Enter MySQL admin password: " MYSQL_PASSWORD
+    echo ""
+fi
+
+MYSQL_USERNAME="xshopaiadmin"
+
+# URL-encode the password for connection string (use python for Windows compatibility)
+DB_PASSWORD_ENCODED=$(python -c "import urllib.parse; print(urllib.parse.quote('$MYSQL_PASSWORD', safe=''))")
+DB_CONNECTION="mysql+pymysql://$MYSQL_USERNAME:$DB_PASSWORD_ENCODED@$MYSQL_HOST:3306/$DB_NAME?ssl_verify_cert=false&ssl_verify_identity=false"
+
+print_success "Database connection configured"
 
 # ============================================================================
 # Confirmation
 # ============================================================================
 print_header "Deployment Configuration Summary"
 
-echo "Resource Group:           $RESOURCE_GROUP"
-echo "Location:                 $LOCATION"
-echo "Container Registry:       $ACR_NAME"
-echo "Environment:              $ENVIRONMENT_NAME"
-echo "Application Insights:     $AI_NAME"
-echo "Log Analytics:            $LOG_ANALYTICS_WORKSPACE"
-echo "Service Bus:              $SB_NAMESPACE"
-echo "MySQL Server:             $DB_SERVER"
-echo "MySQL Database:           $DB_NAME"
-echo "MySQL Username:           $DB_USERNAME"
-echo "App Name:                 $APP_NAME"
+echo -e "${CYAN}Environment:${NC}          $ENVIRONMENT"
+echo -e "${CYAN}Suffix:${NC}               $SUFFIX"
+echo -e "${CYAN}Resource Group:${NC}       $RESOURCE_GROUP"
+echo -e "${CYAN}Container Registry:${NC}   $ACR_LOGIN_SERVER"
+echo -e "${CYAN}Container Env:${NC}        $CONTAINER_ENV"
+echo -e "${CYAN}MySQL Server:${NC}         $MYSQL_HOST"
+echo -e "${CYAN}Database:${NC}             $DB_NAME"
+echo -e "${CYAN}Service:${NC}              $SERVICE_NAME"
+echo -e "${CYAN}Port:${NC}                 $APP_PORT"
 echo ""
 
 read -p "Do you want to proceed with deployment? (y/N): " CONFIRM
@@ -184,381 +263,111 @@ if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
 fi
 
 # ============================================================================
-# Step 1: Create Resource Group
+# Step 1: Build and Push Container Image
 # ============================================================================
-print_header "Step 1: Creating Resource Group"
-
-az group create \
-    --name "$RESOURCE_GROUP" \
-    --location "$LOCATION" \
-    --output none
-
-print_success "Resource group '$RESOURCE_GROUP' created/verified"
-
-# ============================================================================
-# Step 2: Create Azure Container Registry
-# ============================================================================
-print_header "Step 2: Creating Azure Container Registry"
-
-if az acr show --name "$ACR_NAME" &> /dev/null; then
-    print_info "ACR '$ACR_NAME' already exists, skipping creation"
-else
-    az acr create \
-        --resource-group "$RESOURCE_GROUP" \
-        --name "$ACR_NAME" \
-        --sku Basic \
-        --admin-enabled true \
-        --output none
-    print_success "ACR '$ACR_NAME' created"
-fi
-
-ACR_LOGIN_SERVER=$(az acr show --name "$ACR_NAME" --query loginServer --output tsv)
-print_info "ACR Login Server: $ACR_LOGIN_SERVER"
-
-# ============================================================================
-# Step 3: Build and Push Container Image
-# ============================================================================
-print_header "Step 3: Building and Pushing Container Image"
+print_header "Step 1: Building and Pushing Container Image"
 
 # Login to ACR
+print_info "Logging into ACR..."
 az acr login --name "$ACR_NAME"
 print_success "Logged into ACR"
 
 # Navigate to service directory
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SERVICE_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$SERVICE_DIR"
 
 # Build Docker image
 print_info "Building Docker image..."
-docker build -t inventory-service:latest .
+docker build -t "$SERVICE_NAME:latest" .
 print_success "Docker image built"
 
 # Tag and push
-docker tag inventory-service:latest "$ACR_LOGIN_SERVER/inventory-service:latest"
-docker push "$ACR_LOGIN_SERVER/inventory-service:latest"
-print_success "Image pushed to ACR"
+IMAGE_TAG="$ACR_LOGIN_SERVER/$SERVICE_NAME:latest"
+docker tag "$SERVICE_NAME:latest" "$IMAGE_TAG"
+print_info "Pushing image to ACR..."
+docker push "$IMAGE_TAG"
+print_success "Image pushed: $IMAGE_TAG"
 
 # ============================================================================
-# Step 4: Register Resource Providers
+# Step 2: Deploy Container App
 # ============================================================================
-print_header "Step 4: Registering Resource Providers"
+print_header "Step 2: Deploying Container App"
 
-print_info "Registering microsoft.operationalinsights..."
-az provider register --namespace microsoft.operationalinsights --wait
+# Get ACR credentials
+ACR_PASSWORD=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv)
 
-print_info "Registering microsoft.insights..."
-az provider register --namespace microsoft.insights --wait
+# Build environment variables
+ENV_VARS=("FLASK_ENV=production")
+ENV_VARS+=("DATABASE_URL=$DB_CONNECTION")
+ENV_VARS+=("MESSAGING_PROVIDER=dapr")
+ENV_VARS+=("DAPR_PUBSUB_NAME=pubsub")
 
-print_info "Registering Microsoft.App..."
-az provider register --namespace Microsoft.App --wait
-
-print_info "Registering Microsoft.ServiceBus..."
-az provider register --namespace Microsoft.ServiceBus --wait
-
-print_success "All resource providers registered"
-
-# ============================================================================
-# Step 5: Create Application Insights
-# ============================================================================
-print_header "Step 5: Creating Application Insights"
-
-if az monitor app-insights component show --app "$AI_NAME" --resource-group "$RESOURCE_GROUP" &> /dev/null; then
-    print_info "Application Insights '$AI_NAME' already exists"
-else
-    az monitor app-insights component create \
-        --app "$AI_NAME" \
-        --location "$LOCATION" \
-        --resource-group "$RESOURCE_GROUP" \
-        --output none
-    print_success "Application Insights '$AI_NAME' created"
-fi
-
-AI_KEY=$(az monitor app-insights component show \
-    --app "$AI_NAME" \
-    --resource-group "$RESOURCE_GROUP" \
-    --query instrumentationKey \
-    --output tsv)
-print_info "App Insights Key: $AI_KEY"
-
-# ============================================================================
-# Step 6: Create Log Analytics Workspace
-# ============================================================================
-print_header "Step 6: Creating Log Analytics Workspace"
-
-if az monitor log-analytics workspace show --resource-group "$RESOURCE_GROUP" --workspace-name "$LOG_ANALYTICS_WORKSPACE" &> /dev/null; then
-    print_info "Log Analytics Workspace '$LOG_ANALYTICS_WORKSPACE' already exists"
-else
-    az monitor log-analytics workspace create \
-        --resource-group "$RESOURCE_GROUP" \
-        --workspace-name "$LOG_ANALYTICS_WORKSPACE" \
-        --location "$LOCATION" \
-        --output none
-    print_success "Log Analytics Workspace '$LOG_ANALYTICS_WORKSPACE' created"
-fi
-
-LOG_ANALYTICS_WORKSPACE_ID=$(az monitor log-analytics workspace show \
-    --resource-group "$RESOURCE_GROUP" \
-    --workspace-name "$LOG_ANALYTICS_WORKSPACE" \
-    --query customerId \
-    --output tsv)
-
-LOG_ANALYTICS_KEY=$(az monitor log-analytics workspace get-shared-keys \
-    --resource-group "$RESOURCE_GROUP" \
-    --workspace-name "$LOG_ANALYTICS_WORKSPACE" \
-    --query primarySharedKey \
-    --output tsv)
-
-print_info "Log Analytics Workspace ID: $LOG_ANALYTICS_WORKSPACE_ID"
-
-# ============================================================================
-# Step 7: Create Container Apps Environment
-# ============================================================================
-print_header "Step 7: Creating Container Apps Environment"
-
-if az containerapp env show --name "$ENVIRONMENT_NAME" --resource-group "$RESOURCE_GROUP" &> /dev/null; then
-    print_info "Container Apps Environment '$ENVIRONMENT_NAME' already exists"
-else
-    az containerapp env create \
-        --name "$ENVIRONMENT_NAME" \
-        --resource-group "$RESOURCE_GROUP" \
-        --location "$LOCATION" \
-        --dapr-instrumentation-key "$AI_KEY" \
-        --logs-workspace-id "$LOG_ANALYTICS_WORKSPACE_ID" \
-        --logs-workspace-key "$LOG_ANALYTICS_KEY" \
-        --enable-workload-profiles false \
-        --output none
-    print_success "Container Apps Environment '$ENVIRONMENT_NAME' created"
-fi
-
-# ============================================================================
-# Step 8: Create Azure Service Bus
-# ============================================================================
-print_header "Step 8: Creating Azure Service Bus"
-
-if az servicebus namespace show --name "$SB_NAMESPACE" --resource-group "$RESOURCE_GROUP" &> /dev/null; then
-    print_info "Service Bus namespace '$SB_NAMESPACE' already exists"
-else
-    az servicebus namespace create \
-        --name "$SB_NAMESPACE" \
-        --resource-group "$RESOURCE_GROUP" \
-        --location "$LOCATION" \
-        --sku Standard \
-        --output none
-    print_success "Service Bus namespace '$SB_NAMESPACE' created"
-fi
-
-# Create topic
-if az servicebus topic show --name inventory-events --namespace-name "$SB_NAMESPACE" --resource-group "$RESOURCE_GROUP" &> /dev/null; then
-    print_info "Service Bus topic 'inventory-events' already exists"
-else
-    az servicebus topic create \
-        --name inventory-events \
-        --namespace-name "$SB_NAMESPACE" \
-        --resource-group "$RESOURCE_GROUP" \
-        --output none
-    print_success "Service Bus topic 'inventory-events' created"
-fi
-
-SB_CONNECTION=$(az servicebus namespace authorization-rule keys list \
-    --namespace-name "$SB_NAMESPACE" \
-    --resource-group "$RESOURCE_GROUP" \
-    --name RootManageSharedAccessKey \
-    --query primaryConnectionString \
-    --output tsv)
-
-print_info "Service Bus connection string retrieved"
-
-# ============================================================================
-# Step 9: Create Azure MySQL Flexible Server
-# ============================================================================
-print_header "Step 9: Creating Azure MySQL Flexible Server"
-
-if az mysql flexible-server show --name "$DB_SERVER" --resource-group "$RESOURCE_GROUP" &> /dev/null; then
-    print_info "MySQL server '$DB_SERVER' already exists"
-    print_info "Resetting admin password to ensure it matches your input..."
-    az mysql flexible-server update \
-        --resource-group "$RESOURCE_GROUP" \
-        --name "$DB_SERVER" \
-        --admin-password "$DB_PASSWORD" \
-        --output none
-    print_success "MySQL admin password updated"
-else
-    az mysql flexible-server create \
-        --resource-group "$RESOURCE_GROUP" \
-        --name "$DB_SERVER" \
-        --location "$LOCATION" \
-        --admin-user "$DB_USERNAME" \
-        --admin-password "$DB_PASSWORD" \
-        --sku-name Standard_B1ms \
-        --tier Burstable \
-        --version 8.0.21 \
-        --storage-size 32 \
-        --public-access 0.0.0.0 \
-        --output none
-    print_success "MySQL server '$DB_SERVER' created"
-fi
-
-# Configure firewall
-print_info "Configuring firewall rules..."
-
-MY_IP=$(curl -s ifconfig.me)
-print_info "Your public IP: $MY_IP"
-
-az mysql flexible-server firewall-rule create \
-    --resource-group "$RESOURCE_GROUP" \
-    --name "$DB_SERVER" \
-    --rule-name AllowMyIP \
-    --start-ip-address "$MY_IP" \
-    --end-ip-address "$MY_IP" \
-    --output none 2>/dev/null || true
-
-az mysql flexible-server firewall-rule create \
-    --resource-group "$RESOURCE_GROUP" \
-    --name "$DB_SERVER" \
-    --rule-name AllowAzureServices \
-    --start-ip-address 0.0.0.0 \
-    --end-ip-address 0.0.0.0 \
-    --output none 2>/dev/null || true
-
-print_success "Firewall rules configured"
-
-# Create database
-if az mysql flexible-server db show --resource-group "$RESOURCE_GROUP" --server-name "$DB_SERVER" --database-name "$DB_NAME" &> /dev/null; then
-    print_info "Database '$DB_NAME' already exists"
-else
-    az mysql flexible-server db create \
-        --resource-group "$RESOURCE_GROUP" \
-        --server-name "$DB_SERVER" \
-        --database-name "$DB_NAME" \
-        --output none
-    print_success "Database '$DB_NAME' created"
-fi
-
-# URL-encode the password
-DB_PASSWORD_ENCODED=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$DB_PASSWORD', safe=''))")
-# Note: Azure MySQL Flexible Server requires SSL (require_secure_transport=ON)
-# Using ssl_verify_cert=false and ssl_verify_identity=false to enable SSL without certificate verification
-# This is acceptable for Azure MySQL as the connection is already secured by Azure's network
-DB_CONNECTION="mysql+pymysql://$DB_USERNAME:$DB_PASSWORD_ENCODED@$DB_SERVER.mysql.database.azure.com:3306/$DB_NAME?ssl_verify_cert=false\&ssl_verify_identity=false"
-
-print_info "Database connection string prepared"
-
-# ============================================================================
-# Step 10: Create Dapr Component File
-# ============================================================================
-print_header "Step 10: Creating Dapr Component File"
-
-mkdir -p "$SERVICE_DIR/.dapr/components"
-
-cat > "$SERVICE_DIR/.dapr/components/dapr-servicebus-component.yaml" << EOF
-componentType: pubsub.azure.servicebus.topics
-version: v1
-metadata:
-  - name: connectionString
-    value: '$SB_CONNECTION'
-  - name: consumerID
-    value: inventory-service
-scopes:
-  - inventory-service
-EOF
-
-print_success "Dapr Service Bus component file created"
-
-# ============================================================================
-# Step 11: Deploy Container App
-# ============================================================================
-print_header "Step 11: Deploying Container App"
-
-ACR_PASSWORD=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" --output tsv)
-
-# Build env-vars string
-ENV_VARS="FLASK_ENV=production DATABASE_URL=$DB_CONNECTION MESSAGING_PROVIDER=dapr DAPR_PUBSUB_NAME=inventory-pubsub"
-
-if [ -n "$PRODUCT_SERVICE_TOKEN" ]; then
-    ENV_VARS="$ENV_VARS PRODUCT_SERVICE_TOKEN=$PRODUCT_SERVICE_TOKEN"
-fi
-if [ -n "$ORDER_SERVICE_TOKEN" ]; then
-    ENV_VARS="$ENV_VARS ORDER_SERVICE_TOKEN=$ORDER_SERVICE_TOKEN"
-fi
-if [ -n "$CART_SERVICE_TOKEN" ]; then
-    ENV_VARS="$ENV_VARS CART_SERVICE_TOKEN=$CART_SERVICE_TOKEN"
-fi
-if [ -n "$WEB_BFF_TOKEN" ]; then
-    ENV_VARS="$ENV_VARS WEB_BFF_TOKEN=$WEB_BFF_TOKEN"
-fi
-
-if az containerapp show --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" &> /dev/null; then
-    print_info "Container app '$APP_NAME' already exists, updating..."
+# Check if container app exists
+if az containerapp show --name "$SERVICE_NAME" --resource-group "$RESOURCE_GROUP" &> /dev/null; then
+    print_info "Container app '$SERVICE_NAME' exists, updating..."
     az containerapp update \
-        --name "$APP_NAME" \
+        --name "$SERVICE_NAME" \
         --resource-group "$RESOURCE_GROUP" \
-        --image "$ACR_LOGIN_SERVER/inventory-service:latest" \
-        --set-env-vars $ENV_VARS \
+        --image "$IMAGE_TAG" \
+        --set-env-vars "${ENV_VARS[@]}" \
         --output none
+    print_success "Container app updated"
 else
-    az containerapp create \
-        --name "$APP_NAME" \
+    print_info "Creating container app '$SERVICE_NAME'..."
+    
+    # Build the create command
+    # Note: MSYS_NO_PATHCONV=1 prevents Git Bash from converting /subscriptions/... paths on Windows
+    MSYS_NO_PATHCONV=1 az containerapp create \
+        --name "$SERVICE_NAME" \
         --resource-group "$RESOURCE_GROUP" \
-        --environment "$ENVIRONMENT_NAME" \
-        --image "$ACR_LOGIN_SERVER/inventory-service:latest" \
+        --environment "$CONTAINER_ENV" \
+        --image "$IMAGE_TAG" \
         --registry-server "$ACR_LOGIN_SERVER" \
         --registry-username "$ACR_NAME" \
         --registry-password "$ACR_PASSWORD" \
-        --target-port 8004 \
+        --target-port $APP_PORT \
         --ingress external \
         --min-replicas 1 \
         --max-replicas 5 \
         --cpu 0.5 \
         --memory 1.0Gi \
         --enable-dapr \
-        --dapr-app-id inventory-service \
-        --dapr-app-port 8004 \
-        --env-vars $ENV_VARS \
+        --dapr-app-id "$SERVICE_NAME" \
+        --dapr-app-port $APP_PORT \
+        --env-vars "${ENV_VARS[@]}" \
+        ${IDENTITY_ID:+--user-assigned "$IDENTITY_ID"} \
         --output none
+    
+    print_success "Container app created"
 fi
 
-print_success "Container app '$APP_NAME' deployed"
-
 # ============================================================================
-# Step 12: Configure Dapr Component
+# Step 3: Verify Deployment
 # ============================================================================
-print_header "Step 12: Configuring Dapr Component"
-
-az containerapp env dapr-component set \
-    --name "$ENVIRONMENT_NAME" \
-    --resource-group "$RESOURCE_GROUP" \
-    --dapr-component-name inventory-pubsub \
-    --yaml "$SERVICE_DIR/.dapr/components/dapr-servicebus-component.yaml" \
-    --output none
-
-print_success "Dapr component configured"
-
-# ============================================================================
-# Step 13: Verify Deployment
-# ============================================================================
-print_header "Step 13: Verifying Deployment"
+print_header "Step 3: Verifying Deployment"
 
 APP_URL=$(az containerapp show \
-    --name "$APP_NAME" \
+    --name "$SERVICE_NAME" \
     --resource-group "$RESOURCE_GROUP" \
     --query properties.configuration.ingress.fqdn \
-    --output tsv)
+    -o tsv)
 
-print_success "Deployment completed successfully!"
+print_success "Deployment completed!"
 echo ""
 print_info "Application URL: https://$APP_URL"
-print_info "Health Check: https://$APP_URL/health"
+print_info "Health Check:    https://$APP_URL/health"
 echo ""
 
 # Test health endpoint
-print_info "Testing health endpoint..."
-sleep 10  # Wait for app to start
+print_info "Waiting for app to start (30s)..."
+sleep 30
 
-if curl -s --max-time 30 "https://$APP_URL/health" > /dev/null; then
-    print_success "Health check passed!"
+print_info "Testing health endpoint..."
+HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://$APP_URL/health" 2>/dev/null || echo "000")
+
+if [ "$HTTP_STATUS" = "200" ]; then
+    print_success "Health check passed! (HTTP $HTTP_STATUS)"
 else
-    print_warning "Health check failed or timed out. The app may still be starting."
+    print_warning "Health check returned HTTP $HTTP_STATUS. The app may still be starting."
 fi
 
 # ============================================================================
@@ -566,17 +375,25 @@ fi
 # ============================================================================
 print_header "Deployment Summary"
 
-echo "Resource Group:       $RESOURCE_GROUP"
-echo "Location:             $LOCATION"
-echo "Container Registry:   $ACR_LOGIN_SERVER"
-echo "Environment:          $ENVIRONMENT_NAME"
-echo "Application URL:      https://$APP_URL"
+echo -e "${GREEN}==============================================================================${NC}"
+echo -e "${GREEN}   ✅ $SERVICE_NAME DEPLOYED SUCCESSFULLY${NC}"
+echo -e "${GREEN}==============================================================================${NC}"
 echo ""
-echo "MySQL Server:         $DB_SERVER.mysql.database.azure.com"
-echo "MySQL Database:       $DB_NAME"
-echo "MySQL Username:       $DB_USERNAME"
+echo -e "${CYAN}Application:${NC}"
+echo "   URL:              https://$APP_URL"
+echo "   Health:           https://$APP_URL/health"
 echo ""
-echo "Service Bus:          $SB_NAMESPACE.servicebus.windows.net"
+echo -e "${CYAN}Infrastructure:${NC}"
+echo "   Resource Group:   $RESOURCE_GROUP"
+echo "   Environment:      $CONTAINER_ENV"
+echo "   Registry:         $ACR_LOGIN_SERVER"
 echo ""
-print_info "To view logs: az containerapp logs show --name $APP_NAME --resource-group $RESOURCE_GROUP --follow"
-print_info "To delete: az containerapp delete --name $APP_NAME --resource-group $RESOURCE_GROUP --yes"
+echo -e "${CYAN}Database:${NC}"
+echo "   Server:           $MYSQL_HOST"
+echo "   Database:         $DB_NAME"
+echo ""
+echo -e "${CYAN}Useful Commands:${NC}"
+echo -e "   View logs:        ${BLUE}az containerapp logs show --name $SERVICE_NAME --resource-group $RESOURCE_GROUP --follow${NC}"
+echo -e "   View Dapr logs:   ${BLUE}az containerapp logs show --name $SERVICE_NAME --resource-group $RESOURCE_GROUP --container daprd --follow${NC}"
+echo -e "   Delete app:       ${BLUE}az containerapp delete --name $SERVICE_NAME --resource-group $RESOURCE_GROUP --yes${NC}"
+echo ""

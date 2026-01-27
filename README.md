@@ -157,7 +157,6 @@ dapr run \
 | 📘 [Local Development](docs/LOCAL_DEVELOPMENT.md)                | Step-by-step local setup without Dapr                |
 | ⚡ [Local Development with Dapr](docs/LOCAL_DEVELOPMENT_DAPR.md) | Local setup with full Dapr integration               |
 | ☁️ [Azure Container Apps](docs/ACA_DEPLOYMENT.md)                | Deploy to serverless containers with built-in Dapr   |
-| ⎈ [Azure Kubernetes](docs/AKS_DEPLOYMENT.md)                     | Deploy to AKS with Dapr sidecar injection            |
 | 📋 [Product Requirements](docs/PRD.md)                           | Complete API specification and business requirements |
 | 🏗️ [Architecture](docs/ARCHITECTURE.md)                          | System design, patterns, and data flows              |
 | 🔐 [Security](.github/SECURITY.md)                               | Security policies and vulnerability reporting        |
