@@ -60,7 +60,7 @@ EXPOSE 8004
 
 # Health check (using Python to avoid curl dependency)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8004/readiness')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8004/health/ready')" || exit 1
 
 # Start development server with auto-reload
 CMD ["flask", "run", "--host", "0.0.0.0", "--port", "8004", "--reload"]
@@ -89,10 +89,11 @@ EXPOSE 8004
 
 # Health check (using Python to avoid curl dependency)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8004/readiness')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8004/health/ready')" || exit 1
 
 # Start production server with gunicorn (workers configurable via WORKERS env var, default: 4)
-CMD sh -c "gunicorn --bind 0.0.0.0:8004 --workers ${WORKERS:-4} --timeout 120 run:app"
+# Migrations are run automatically on startup before starting the server
+CMD sh -c "echo 'Running database migrations...' && flask db upgrade && echo 'Migrations complete. Starting server...' && gunicorn --bind 0.0.0.0:8004 --workers ${WORKERS:-4} --timeout 120 run:app"
 
 # Labels for better image management and security scanning
 LABEL maintainer="xshopai Team"
