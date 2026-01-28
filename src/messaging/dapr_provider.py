@@ -23,14 +23,14 @@ class DaprProvider(MessagingProvider):
     Uses Dapr sidecar for pub/sub messaging.
     """
     
-    def __init__(self, pubsub_name: str = "inventory-pubsub", 
+    def __init__(self, pubsub_name: str = "pubsub", 
                  dapr_http_port: Optional[int] = None):
         """
         Initialize Dapr provider.
         
         Args:
-            pubsub_name: Name of Dapr pub/sub component (default: inventory-pubsub)
-            dapr_http_port: Dapr sidecar HTTP port (optional, defaults to 3504 from env)
+            pubsub_name: Name of Dapr pub/sub component (default: pubsub)
+            dapr_http_port: Dapr sidecar HTTP port (optional, defaults to 3500 from env)
         """
         self.pubsub_name = pubsub_name
         self.dapr_http_port = dapr_http_port

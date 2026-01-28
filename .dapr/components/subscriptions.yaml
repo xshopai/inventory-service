@@ -6,7 +6,7 @@ spec:
   topic: product.created
   routes:
     default: /events/product-created
-  pubsubname: event-bus
+  pubsubname: pubsub
   deadLetterTopic: product.created.deadletter
 scopes:
   - inventory-service
@@ -19,7 +19,7 @@ spec:
   topic: product.updated
   routes:
     default: /events/product-updated
-  pubsubname: event-bus
+  pubsubname: pubsub
   deadLetterTopic: product.updated.deadletter
 scopes:
   - inventory-service
@@ -32,7 +32,7 @@ spec:
   topic: product.deleted
   routes:
     default: /events/product-deleted
-  pubsubname: event-bus
+  pubsubname: pubsub
   deadLetterTopic: product.deleted.deadletter
 scopes:
   - inventory-service
@@ -45,7 +45,7 @@ spec:
   topic: order.created
   routes:
     default: /events/order-created
-  pubsubname: event-bus
+  pubsubname: pubsub
   deadLetterTopic: order.created.deadletter
 scopes:
   - inventory-service
@@ -58,7 +58,7 @@ spec:
   topic: order.cancelled
   routes:
     default: /events/order-cancelled
-  pubsubname: event-bus
+  pubsubname: pubsub
   deadLetterTopic: order.cancelled.deadletter
 scopes:
   - inventory-service
@@ -71,7 +71,7 @@ spec:
   topic: order.completed
   routes:
     default: /events/order-completed
-  pubsubname: event-bus
+  pubsubname: pubsub
   deadLetterTopic: order.completed.deadletter
 scopes:
   - inventory-service

@@ -36,7 +36,7 @@ class TestDaprProvider:
     def test_init_default_params(self):
         """Test DaprProvider initialization with defaults."""
         provider = DaprProvider()
-        assert provider.pubsub_name == "inventory-pubsub"
+        assert provider.pubsub_name == "pubsub"
         assert provider.dapr_http_port is None
     
     def test_init_custom_params(self):
@@ -64,7 +64,7 @@ class TestDaprProvider:
         assert result is True
         mock_client_instance.publish_event.assert_called_once()
         call_args = mock_client_instance.publish_event.call_args
-        assert call_args[1]['pubsub_name'] == "inventory-pubsub"
+        assert call_args[1]['pubsub_name'] == "pubsub"
         assert call_args[1]['topic_name'] == "test.topic"
     
     @patch('src.messaging.dapr_provider.DaprClient')
@@ -229,7 +229,7 @@ class TestMessagingFactory:
         provider = create_messaging_provider()
         
         assert isinstance(provider, DaprProvider)
-        assert provider.pubsub_name == "inventory-pubsub"
+        assert provider.pubsub_name == "pubsub"
     
     def test_create_dapr_provider_explicit(self, monkeypatch):
         """Test creating Dapr provider explicitly."""

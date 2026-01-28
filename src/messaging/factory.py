@@ -61,7 +61,7 @@ def _create_dapr_provider() -> DaprProvider:
     Used for Azure Container Apps, AKS, and local Docker Compose.
     """
     # Get Dapr configuration from environment
-    pubsub_name = os.getenv('DAPR_PUBSUB_NAME', 'inventory-pubsub')
+    pubsub_name = 'pubsub'
     dapr_http_port = os.getenv('DAPR_HTTP_PORT')
     
     # Convert port to integer if provided

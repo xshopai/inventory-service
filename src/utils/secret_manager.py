@@ -14,7 +14,7 @@ class DaprSecretManager:
     """Client for retrieving secrets from Dapr Secret Store"""
     
     def __init__(self):
-        self.secret_store_name = 'secret-store'
+        self.secret_store_name = 'secretstore'
         self.dapr_client = DaprClient()
     
     def get_secret(self, key: str) -> str:
