@@ -72,7 +72,7 @@ SECRET_KEY=your-dev-secret-key-change-me
 # Messaging Configuration - Dapr
 MESSAGING_PROVIDER=dapr
 DAPR_PUBSUB_NAME=event-bus
-DAPR_HTTP_PORT=3504
+DAPR_HTTP_PORT=3500
 
 # Service Tokens (for service-to-service communication)
 PRODUCT_SERVICE_TOKEN=svc-product-service-4ff5876fc86cc45a18d88e5d
@@ -129,12 +129,14 @@ If using Dapr secret store, create `.dapr/secrets.json`:
 
 ### Option A: Using dapr run command
 
+> **Note:** All services now use the standard Dapr ports (3500 for HTTP, 50001 for gRPC). This simplifies configuration and works consistently whether running via Docker Compose or individual service runs.
+
 ```bash
 dapr run \
   --app-id inventory-service \
   --app-port 8004 \
-  --dapr-http-port 3504 \
-  --dapr-grpc-port 50004 \
+  --dapr-http-port 3500 \
+  --dapr-grpc-port 50001 \
   --resources-path ./.dapr/components \
   --config ./.dapr/config.yaml \
   --log-level warn \
@@ -163,7 +165,7 @@ powershell -ExecutionPolicy Bypass -File run.ps1
 
 ```bash
 # Check Dapr sidecar metadata
-curl http://localhost:3504/v1.0/metadata
+curl http://localhost:3500/v1.0/metadata
 
 # Check service health
 curl http://localhost:8004/health

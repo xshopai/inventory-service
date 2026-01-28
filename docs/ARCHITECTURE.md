@@ -93,8 +93,10 @@ The Inventory Service is a core microservice within the xshopai e-commerce platf
 | API Docs       | Swagger/OpenAPI via Flask-RESTX             |
 | Messaging      | Dapr Pub/Sub (abstracted via DaprProvider)  |
 | Main Port      | 8004                                        |
-| Dapr HTTP Port | 3504                                        |
-| Dapr gRPC Port | 50004                                       |
+| Dapr HTTP Port | 3500                                        |
+| Dapr gRPC Port | 50001                                       |
+
+> **Note:** All services now use the standard Dapr ports (3500 for HTTP, 50001 for gRPC). This simplifies configuration and works consistently whether running via Docker Compose or individual service runs.
 
 ### 1.4 Directory Structure
 
@@ -203,7 +205,7 @@ flowchart TB
         direction TB
         MySQL[("🗄️ MySQL 8.x<br/>Port: 3306")]
         RabbitMQ[("🐰 RabbitMQ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Message Broker &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Port: 5672")]
-        Dapr["📡 Dapr Sidecar<br/>HTTP: 3504"]
+        Dapr["📡 Dapr Sidecar<br/>HTTP: 3500"]
         OTEL["📊 OpenTelemetry<br/>Collector"]
     end
 
@@ -338,7 +340,7 @@ flowchart TB
 | Component               | Purpose                       | Port/Connection          |
 | ----------------------- | ----------------------------- | ------------------------ |
 | MySQL 8.x               | Persistent storage            | 3306 (configurable)      |
-| Dapr Sidecar            | Pub/sub messaging             | HTTP: 3504, gRPC: 50004  |
+| Dapr Sidecar            | Pub/sub messaging             | HTTP: 3500, gRPC: 50001  |
 | RabbitMQ (via Dapr)     | Message broker backend        | Abstracted by Dapr       |
 | OpenTelemetry Collector | Distributed tracing & metrics | 4317 (gRPC), 4318 (HTTP) |
 
