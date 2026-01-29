@@ -74,7 +74,7 @@ echo "Available environments: dev, prod"
 read -p "Enter environment [dev]: " ENVIRONMENT
 ENVIRONMENT="${ENVIRONMENT:-dev}"
 
-[[ "$ENVIRONMENT" =~ ^(dev|prod)$ ]] || { print_error "Invalid environment"; exit 1; }
+[[ "$ENVIRONMENT" =~ ^(dev|prod)$ ]] || { print_error "Invalid environment (dev/prod only)"; exit 1; }
 print_success "Environment: $ENVIRONMENT"
 
 echo ""
