@@ -152,8 +152,9 @@ echo "CPU/Memory:         $CPU / $MEMORY"
 echo "Replicas:           $MIN_REPLICAS - $MAX_REPLICAS"
 echo ""
 
-read -p "Proceed with deployment? (y/N): " CONFIRM
-[[ "$CONFIRM" =~ ^[Yy]$ ]] || { print_warning "Cancelled"; exit 0; }
+read -p "Proceed with deployment? (Y/n): " CONFIRM
+CONFIRM=${CONFIRM:-Y}
+[[ "$CONFIRM" =~ ^[Nn]$ ]] && { print_warning "Cancelled"; exit 0; }
 
 # ============================================================================
 # BUILD & PUSH IMAGE

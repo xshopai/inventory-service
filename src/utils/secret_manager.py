@@ -91,14 +91,37 @@ class DaprSecretManager:
             logger.error(f"Error retrieving secret '{key}': {str(e)}")
             raise
     
-    def get_database_url(self) -> str:
+    def get_database_url(self, database_name: str = None) -> str:
         """
-        Get database URL from Dapr Secret Store
+        Get database URL from Dapr Secret Store and append the database name.
+        
+        The Key Vault stores server-level connection strings without database names.
+        This method appends the service-specific database name.
+        
+        Args:
+            database_name: Database name to append. Defaults to DB_NAME env var or 'inventory_service_db'
         
         Returns:
-            Database connection URL string
+            Database connection URL string with database name
         """
-        return self.get_secret('DATABASE_URL')
+        import os
+        
+        # Get the server connection string (without database name)
+        server_url = self.get_secret('DATABASE_URL')
+        
+        # Get database name from parameter, env var, or default
+        db_name = database_name or os.environ.get('DB_NAME', 'inventory_service_db')
+        
+        # Parse and append database name
+        # URL format: mysql+pymysql://user:pass@host:port?ssl_ca=...
+        # Need: mysql+pymysql://user:pass@host:port/db_name?ssl_ca=...
+        if '?' in server_url:
+            # Has query params - insert db before ?
+            base_url, query = server_url.split('?', 1)
+            return f"{base_url}/{db_name}?{query}"
+        else:
+            # No query params - just append db
+            return f"{server_url}/{db_name}"
     
     def get_jwt_config(self) -> Dict[str, Any]:
         """
