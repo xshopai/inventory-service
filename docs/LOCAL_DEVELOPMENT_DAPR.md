@@ -60,34 +60,32 @@ cp .env.dapr .env
 Copy-Item .env.dapr .env
 ```
 
-The `.env.dapr` file contains:
+The `.env.dapr` file contains **only non-sensitive configuration**:
 
 ```bash
-PORT=8004
+PORT=8005
 
 # Flask Configuration
 FLASK_ENV=development
-SECRET_KEY=your-dev-secret-key-change-me
 
 # Messaging Configuration - Dapr
 MESSAGING_PROVIDER=dapr
-DAPR_PUBSUB_NAME=event-bus
 DAPR_HTTP_PORT=3500
-
-# Service Tokens (for service-to-service communication)
-PRODUCT_SERVICE_TOKEN=svc-product-service-4ff5876fc86cc45a18d88e5d
-ORDER_SERVICE_TOKEN=svc-order-service-4ff5876fc86cc45a18d88e5d
-CART_SERVICE_TOKEN=svc-cart-service-4ff5876fc86cc45a18d88e5d
-WEB_BFF_TOKEN=svc-web-bff-4ff5876fc86cc45a18d88e5d
 
 # Logging
 LOG_LEVEL=DEBUG
+LOG_FORMAT=console
+LOG_TO_CONSOLE=true
+LOG_TO_FILE=false
+LOG_FILE_PATH=./logs/inventory-service.log
 ```
 
 > **Note**:
 >
-> - When using Dapr mode, `DATABASE_URL` and `JWT_SECRET` are retrieved from the Dapr secret store (configured in `.dapr/secrets.json`)
-> - The Dapr sidecar handles RabbitMQ connections using the configuration in `.dapr/components/event-bus.yaml`
+> - **Secrets are NOT in `.env.dapr`** - they are retrieved from the Dapr secret store (configured in `.dapr/secrets.json`)
+> - Secrets include: `DATABASE_URL`, `JWT_SECRET`, `FLASK_SECRET_KEY`, and service tokens
+> - The Dapr sidecar handles RabbitMQ connections using the pub/sub component in `.dapr/components/event-bus.yaml` (component name: `pubsub`)
+> - The pubsub component name (`pubsub`) is hardcoded in the application code
 > - If Dapr secret store fails, the service falls back to environment variables
 
 ---
@@ -101,25 +99,39 @@ The repository includes pre-configured Dapr components in `.dapr/components/`:
 ls -la .dapr/components/
 
 # You should see:
-# - event-bus.yaml (RabbitMQ pub/sub)
+# - event-bus.yaml (RabbitMQ pub/sub, component name: pubsub)
 # - subscriptions.yaml (Event subscriptions)
 # - secret-store.yaml (Local secrets)
 ```
 
 ---
 
-## Step 4: Configure Dapr Secrets (Optional)
+## Step 4: Configure Dapr Secrets (Required)
 
-If using Dapr secret store, create `.dapr/secrets.json`:
+Create `.dapr/secrets.json` with all sensitive configuration:
 
 ```json
 {
   "DATABASE_URL": "mysql+pymysql://admin:admin123@localhost:3306/inventory_service_db",
-  "JWT_SECRET": "8tDBDMcpxroHoHjXjk8xp/uAn8rzD4y8ZZremFkC4gI="
+  "JWT_SECRET": "8tDBDMcpxroHoHjXjk8xp/uAn8rzD4y8ZZremFkC4gI=",
+  "FLASK_SECRET_KEY": "your-dev-secret-key-change-me",
+  "PRODUCT_SERVICE_TOKEN": "svc-product-service-4ff5876fc86cc45a18d88e5d",
+  "ORDER_SERVICE_TOKEN": "svc-order-service-4ff5876fc86cc45a18d88e5d",
+  "CART_SERVICE_TOKEN": "svc-cart-service-4ff5876fc86cc45a18d88e5d",
+  "WEB_BFF_TOKEN": "svc-web-bff-4ff5876fc86cc45a18d88e5d"
 }
 ```
 
-> **Note:** Use UPPER_SNAKE_CASE for secret names to match platform conventions (`.env` files, auth-service, etc.).
+**Secret Keys Explained:**
+
+| Secret             | Purpose                                  |
+| ------------------ | ---------------------------------------- |
+| `DATABASE_URL`     | MySQL connection string                  |
+| `JWT_SECRET`       | JWT token validation key                 |
+| `FLASK_SECRET_KEY` | Flask session signing key                |
+| `*_SERVICE_TOKEN`  | Service-to-service authentication tokens |
+
+> **Note:** Use UPPER_SNAKE_CASE for secret names to match platform conventions.
 
 > **Security Note:** This file is gitignored. Never commit secrets.json to version control.
 
@@ -134,7 +146,7 @@ If using Dapr secret store, create `.dapr/secrets.json`:
 ```bash
 dapr run \
   --app-id inventory-service \
-  --app-port 8004 \
+  --app-port 8005 \
   --dapr-http-port 3500 \
   --dapr-grpc-port 50001 \
   --resources-path ./.dapr/components \
@@ -168,11 +180,11 @@ powershell -ExecutionPolicy Bypass -File run.ps1
 curl http://localhost:3500/v1.0/metadata
 
 # Check service health
-curl http://localhost:8004/health
+curl http://localhost:8005/health
 
 # Expected metadata response shows:
 # - app-id: inventory-service
-# - Configured components (event-bus, etc.)
+# - Configured components (pubsub, etc.)
 ```
 
 ---
@@ -208,7 +220,7 @@ dapr stop --app-id inventory-service
 
 ## Dapr Component Configuration Reference
 
-### Event Bus (RabbitMQ)
+### Pub/Sub Component (RabbitMQ)
 
 File: `.dapr/components/event-bus.yaml`
 
@@ -216,7 +228,7 @@ File: `.dapr/components/event-bus.yaml`
 apiVersion: dapr.io/v1alpha1
 kind: Component
 metadata:
-  name: event-bus
+  name: pubsub
 spec:
   type: pubsub.rabbitmq
   version: v1
@@ -250,6 +262,8 @@ spec:
 scopes:
   - inventory-service
 ```
+
+> **Note:** The component name must be `pubsub` to match the hardcoded value in the application code.
 
 **Key Configuration Options:**
 

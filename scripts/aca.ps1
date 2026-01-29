@@ -107,19 +107,18 @@ $ServiceDir = Split-Path -Parent $ScriptDir
 if (-not $Environment) {
     Write-Host "Available Environments:" -ForegroundColor Cyan
     Write-Host "   dev     - Development environment"
-    Write-Host "   staging - Staging/QA environment"
     Write-Host "   prod    - Production environment"
     Write-Host ""
     
-    $Environment = Read-Host "Enter environment (dev/staging/prod) [dev]"
+    $Environment = Read-Host "Enter environment (dev/prod) [dev]"
     if ([string]::IsNullOrWhiteSpace($Environment)) {
         $Environment = "dev"
     }
 }
 
-if ($Environment -notmatch "^(dev|staging|prod)$") {
+if ($Environment -notmatch "^(dev|prod)$") {
     Write-ErrorMsg "Invalid environment: $Environment"
-    Write-Host "   Valid values: dev, staging, prod"
+    Write-Host "   Valid values: dev, prod"
     exit 1
 }
 Write-Success "Environment: $Environment"

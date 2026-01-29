@@ -50,7 +50,7 @@ cd inventory-service/scripts
 
 The script will:
 
-1. Prompt for environment (dev/staging/prod) and infrastructure suffix
+1. Prompt for environment (dev/prod) and infrastructure suffix
 2. Verify infrastructure exists
 3. Build and push the Docker image
 4. Create/update the Container App
@@ -90,7 +90,7 @@ KEY_VAULT="kv-${PROJECT_NAME}-${ENVIRONMENT}-${SUFFIX}"
 
 # Service-specific
 SERVICE_NAME="inventory-service"
-APP_PORT=8004
+APP_PORT=8005
 DB_NAME="inventory_db"
 ```
 
@@ -149,8 +149,8 @@ MYSQL_USERNAME="xshopaiadmin"
 # URL-encode password (handles special characters)
 DB_PASSWORD_ENCODED=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$MYSQL_PASSWORD', safe=''))")
 
-# Build connection string
-DB_CONNECTION="mysql+pymysql://$MYSQL_USERNAME:$DB_PASSWORD_ENCODED@$MYSQL_HOST:3306/$DB_NAME?ssl_verify_cert=false&ssl_verify_identity=false"
+# Build connection string with SSL (Azure MySQL requires secure transport)
+DB_CONNECTION="mysql+pymysql://$MYSQL_USERNAME:$DB_PASSWORD_ENCODED@$MYSQL_HOST:3306/$DB_NAME?ssl_ca=/etc/ssl/certs/ca-certificates.crt"
 ```
 
 ### Step 7: Deploy Container App
@@ -180,9 +180,10 @@ az containerapp create \
   --env-vars \
     "FLASK_ENV=production" \
     "DATABASE_URL=$DB_CONNECTION" \
-    "MESSAGING_PROVIDER=dapr" \
-    "DAPR_PUBSUB_NAME=pubsub"
+    "MESSAGING_PROVIDER=dapr"
 ```
+
+> **Note:** The pubsub component name (`pubsub`) is hardcoded in the application code, not passed as an environment variable.
 
 ### Step 8: Verify Deployment
 
@@ -219,12 +220,12 @@ The infrastructure deployment pre-configures Dapr components that are available 
 The service is pre-configured to use Dapr for messaging:
 
 ```python
-# Environment variable
-DAPR_PUBSUB_NAME=pubsub
+# The pubsub name 'pubsub' is hardcoded in the application code
+# No environment variable needed
 
 # Publishing events
 dapr_client.publish_event(
-    pubsub_name="pubsub",
+    pubsub_name="pubsub",  # Hardcoded in src/messaging/factory.py
     topic_name="inventory.updated",
     data={"sku": "ABC123", "quantity": 50}
 )
@@ -241,12 +242,13 @@ def subscribe():
 
 ## Environment Variables
 
-| Variable             | Description                 | Example               |
-| -------------------- | --------------------------- | --------------------- |
-| `FLASK_ENV`          | Flask environment           | `production`          |
-| `DATABASE_URL`       | MySQL connection string     | `mysql+pymysql://...` |
-| `MESSAGING_PROVIDER` | Messaging backend           | `dapr`                |
-| `DAPR_PUBSUB_NAME`   | Dapr pub/sub component name | `pubsub`              |
+| Variable             | Description             | Example               |
+| -------------------- | ----------------------- | --------------------- |
+| `FLASK_ENV`          | Flask environment       | `production`          |
+| `DATABASE_URL`       | MySQL connection string | `mysql+pymysql://...` |
+| `MESSAGING_PROVIDER` | Messaging backend       | `dapr`                |
+
+> **Note:** The pubsub component name (`pubsub`) is hardcoded in the application code. Secrets like `JWT_SECRET`, `FLASK_SECRET_KEY`, and service tokens should be stored in Azure Key Vault and accessed via Dapr Secret Store in production.
 
 ---
 

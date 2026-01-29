@@ -148,3 +148,79 @@ def get_jwt_config() -> Dict[str, Any]:
     }
 
 
+def get_service_tokens() -> Dict[str, str]:
+    """
+    Get service tokens for service-to-service authentication.
+    
+    First tries Dapr Secret Store (for production/Dapr mode).
+    Falls back to environment variables (for local dev without Dapr).
+    
+    Returns:
+        Dictionary mapping service names to their tokens
+    """
+    service_token_keys = {
+        'product-service': 'PRODUCT_SERVICE_TOKEN',
+        'order-service': 'ORDER_SERVICE_TOKEN',
+        'cart-service': 'CART_SERVICE_TOKEN',
+        'web-bff': 'WEB_BFF_TOKEN'
+    }
+    
+    tokens = {}
+    
+    # Try Dapr Secret Store first
+    try:
+        secret_manager = get_secret_manager()
+        for service_name, secret_key in service_token_keys.items():
+            try:
+                token = secret_manager.get_secret(secret_key)
+                if token:
+                    tokens[service_name] = token
+            except Exception:
+                pass  # Skip if specific token not found
+        
+        if tokens:
+            logger.info(f'Service tokens loaded from Dapr for {len(tokens)} services')
+            return tokens
+    except Exception as e:
+        logger.warning(f'Dapr Secret Store not available for service tokens: {e}')
+    
+    # Fallback to environment variables for local development without Dapr
+    for service_name, env_key in service_token_keys.items():
+        token = os.environ.get(env_key)
+        if token:
+            tokens[service_name] = token
+    
+    if tokens:
+        logger.info(f'Service tokens loaded from env vars for {len(tokens)} services')
+    else:
+        logger.warning('No service tokens configured')
+    
+    return tokens
+
+
+def get_flask_secret_key() -> str:
+    """
+    Get Flask SECRET_KEY for session signing.
+    
+    First tries Dapr Secret Store (for production/Dapr mode).
+    Falls back to environment variable (for local dev without Dapr).
+    
+    Returns:
+        Flask secret key string
+    """
+    # Try Dapr Secret Store first
+    try:
+        return get_secret_manager().get_secret('FLASK_SECRET_KEY')
+    except Exception as e:
+        logger.warning(f'Dapr Secret Store not available for Flask secret: {e}')
+    
+    # Fallback to environment variable for local development without Dapr
+    secret_key = os.environ.get('SECRET_KEY')
+    if secret_key:
+        return secret_key
+    
+    # Default for development only
+    logger.warning('Using default Flask SECRET_KEY - not secure for production!')
+    return 'dev-secret-key-change-in-production'
+
+

@@ -92,7 +92,7 @@ The Inventory Service is a core microservice within the xshopai e-commerce platf
 | Cache          | None (Redis integration removed)            |
 | API Docs       | Swagger/OpenAPI via Flask-RESTX             |
 | Messaging      | Dapr Pub/Sub (abstracted via DaprProvider)  |
-| Main Port      | 8004                                        |
+| Main Port      | 8005                                        |
 | Dapr HTTP Port | 3500                                        |
 | Dapr gRPC Port | 50001                                       |
 
@@ -185,7 +185,7 @@ flowchart TB
     end
 
     subgraph Core["<b>🎯 CORE SERVICE</b>"]
-        INV["<b>Inventory Service</b><br/>━━━━━━━━━━━━━━━<br/>📦 Port: 8004<br/>Manages stock levels,<br/>reservations & availability"]
+        INV["<b>Inventory Service</b><br/>━━━━━━━━━━━━━━━<br/>📦 Port: 8005<br/>Manages stock levels,<br/>reservations & availability"]
     end
 
     subgraph Services["<b>🔗 DEPENDENT SERVICES</b>"]
@@ -1324,20 +1324,21 @@ This section provides the Dapr component and subscription configurations needed 
 
 #### 5.4.1 Pub/Sub Component (RabbitMQ)
 
-File: `dapr/components/pubsub.yaml`
+File: `.dapr/components/event-bus.yaml`
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
 kind: Component
 metadata:
-  name: inventory-pubsub
-  namespace: default
+  name: pubsub
 spec:
   type: pubsub.rabbitmq
   version: v1
   metadata:
-    - name: host
-      value: 'amqp://guest:guest@rabbitmq:5672'
+    - name: connectionString
+      value: 'amqp://guest:guest@127.0.0.1:5672'
+    - name: consumerID
+      value: 'inventory-service'
     - name: durable
       value: 'true'
     - name: deletedWhenUnused
@@ -1351,67 +1352,73 @@ spec:
     - name: prefetchCount
       value: '10'
     - name: reconnectWait
-      value: '5s'
-    - name: maxReconnect
-      value: '3'
+      value: '5'
+    - name: concurrencyMode
+      value: 'parallel'
+    - name: enableDeadLetter
+      value: 'true'
+    - name: exchangeKind
+      value: 'topic'
 scopes:
   - inventory-service
 ```
 
+> **Important:** The component name must be `pubsub` to match the hardcoded value in the application code (`src/messaging/factory.py`).
+
 #### 5.4.2 Subscription Configuration
 
-File: `dapr/components/subscription.yaml`
+File: `.dapr/components/subscriptions.yaml`
 
 ```yaml
 apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
-  name: inventory-subscriptions
+  name: product-created-subscription
 spec:
-  pubsubname: inventory-pubsub
   topic: product.created
   routes:
     default: /events/product-created
-  deadLetterTopic: inventory-events-dlq
+  pubsubname: pubsub
+  deadLetterTopic: product.created.deadletter
 scopes:
   - inventory-service
 ---
 apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
-  name: inventory-product-deleted
+  name: product-deleted-subscription
 spec:
-  pubsubname: inventory-pubsub
   topic: product.deleted
   routes:
     default: /events/product-deleted
-  deadLetterTopic: inventory-events-dlq
+  pubsubname: pubsub
+  deadLetterTopic: product.deleted.deadletter
 scopes:
   - inventory-service
 ---
 apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
-  name: inventory-order-cancelled
+  name: order-cancelled-subscription
 spec:
-  pubsubname: inventory-pubsub
   topic: order.cancelled
   routes:
     default: /events/order-cancelled
-  deadLetterTopic: inventory-events-dlq
+  pubsubname: pubsub
+  deadLetterTopic: order.cancelled.deadletter
 scopes:
   - inventory-service
 ---
 apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
-  name: inventory-order-completed
+  name: order-completed-subscription
 spec:
-  pubsubname: inventory-pubsub
   topic: order.completed
   routes:
     default: /events/order-completed
-  deadLetterTopic: inventory-events-dlq
+  pubsubname: pubsub
+  deadLetterTopic: order.completed.deadletter
 scopes:
   - inventory-service
 ```
@@ -1544,12 +1551,13 @@ flowchart TB
 | Environment Variable           | DaprProvider | ServiceBusProvider | RabbitMQProvider |
 | ------------------------------ | ------------ | ------------------ | ---------------- |
 | `MESSAGING_PROVIDER`           | `dapr`       | `servicebus`       | `rabbitmq`       |
-| `DAPR_PUBSUB_NAME`             | ✅ Required  | ❌ Not used        | ❌ Not used      |
-| `DAPR_HTTP_PORT`               | ✅ Required  | ❌ Not used        | ❌ Not used      |
+| `DAPR_HTTP_PORT`               | ⚪ Optional  | ❌ Not used        | ❌ Not used      |
 | `SERVICEBUS_CONNECTION_STRING` | ❌ Not used  | ✅ Required        | ❌ Not used      |
 | `SERVICEBUS_TOPIC_NAME`        | ❌ Not used  | ✅ Required        | ❌ Not used      |
 | `RABBITMQ_URL`                 | ❌ Not used  | ❌ Not used        | ✅ Required      |
 | `RABBITMQ_EXCHANGE`            | ❌ Not used  | ❌ Not used        | ⚪ Optional      |
+
+> **Note:** The pubsub component name (`pubsub`) is hardcoded in `src/messaging/factory.py`. No environment variable needed.
 
 #### 5.5.4 Benefits of Abstraction
 
@@ -1568,34 +1576,35 @@ flowchart TB
 
 ### 6.1 Environment Variables
 
+#### Non-Sensitive Configuration (in `.env` files)
+
 | Variable              | Description                                | Required | Default       |
 | --------------------- | ------------------------------------------ | -------- | ------------- |
-| `PORT`                | Service port                               | No       | `8004`        |
+| `PORT`                | Service port                               | No       | `8005`        |
 | `FLASK_ENV`           | Flask environment                          | No       | `development` |
 | `FLASK_DEBUG`         | Enable debug mode                          | No       | `false`       |
-| `SECRET_KEY`          | Flask secret key                           | Yes      | -             |
-| `DATABASE_URL`        | PostgreSQL connection string               | Yes      | -             |
-| `REDIS_URL`           | Redis connection string                    | Yes      | -             |
-| `JWT_SECRET_KEY`      | JWT validation secret                      | Yes      | -             |
-| `JWT_ALGORITHM`       | JWT algorithm                              | No       | `HS256`       |
 | `MESSAGING_PROVIDER`  | Provider: `dapr`, `servicebus`, `rabbitmq` | No       | `dapr`        |
 | `LOG_LEVEL`           | Logging level                              | No       | `INFO`        |
+| `LOG_FORMAT`          | Log format: `console` or `json`            | No       | `console`     |
 | `LOW_STOCK_THRESHOLD` | Default low stock threshold                | No       | `10`          |
 | `DAPR_HTTP_PORT`      | Dapr sidecar HTTP port                     | No       | `3500`        |
-| `DAPR_GRPC_PORT`      | Dapr sidecar gRPC port                     | No       | `50001`       |
-| `DAPR_PUBSUB_NAME`    | Dapr pub/sub component name                | No       | `pubsub`      |
 | `CORS_ORIGINS`        | Allowed CORS origins (comma-separated)     | No       | `*`           |
 
-#### Service Token Configuration
+#### Secrets (in Dapr Secret Store or `.env` for non-Dapr mode)
 
-Service tokens for authenticating incoming service-to-service calls:
+These values are retrieved from Dapr Secret Store when running with Dapr, or from environment variables when running without Dapr:
 
-| Variable                | Description                     | Required | Format                         |
-| ----------------------- | ------------------------------- | -------- | ------------------------------ |
-| `PRODUCT_SERVICE_TOKEN` | Token for Product Service calls | Yes      | `svc-product-service-<random>` |
-| `ORDER_SERVICE_TOKEN`   | Token for Order Service calls   | Yes      | `svc-order-service-<random>`   |
-| `CART_SERVICE_TOKEN`    | Token for Cart Service calls    | Yes      | `svc-cart-service-<random>`    |
-| `WEB_BFF_TOKEN`         | Token for Web BFF calls         | Yes      | `svc-web-bff-<random>`         |
+| Secret                  | Description                     | Required |
+| ----------------------- | ------------------------------- | -------- |
+| `DATABASE_URL`          | MySQL connection string         | Yes      |
+| `JWT_SECRET`            | JWT validation secret           | Yes      |
+| `FLASK_SECRET_KEY`      | Flask session signing key       | Yes      |
+| `PRODUCT_SERVICE_TOKEN` | Token for Product Service calls | Yes      |
+| `ORDER_SERVICE_TOKEN`   | Token for Order Service calls   | Yes      |
+| `CART_SERVICE_TOKEN`    | Token for Cart Service calls    | Yes      |
+| `WEB_BFF_TOKEN`         | Token for Web BFF calls         | Yes      |
+
+> **Note:** The pubsub component name (`pubsub`) is hardcoded in the application code (`src/messaging/factory.py`), not configurable via environment variable.
 
 > **Token Format**: `svc-{service-name}-{random-24-chars}` where random is cryptographically secure.
 >
@@ -1605,13 +1614,13 @@ Service tokens for authenticating incoming service-to-service calls:
 
 ### 6.2 Messaging Provider Configuration
 
-#### 6.2.1 Dapr Provider (Default - Local Development)
+#### 6.2.1 Dapr Provider (Default - Local Development & Azure Container Apps)
 
-| Variable           | Description            | Required            |
-| ------------------ | ---------------------- | ------------------- |
-| `DAPR_HTTP_PORT`   | Dapr sidecar HTTP port | No (default: 3500)  |
-| `DAPR_GRPC_PORT`   | Dapr sidecar gRPC port | No (default: 50001) |
-| `DAPR_PUBSUB_NAME` | Pub/sub component name | Yes                 |
+| Variable         | Description            | Required           |
+| ---------------- | ---------------------- | ------------------ |
+| `DAPR_HTTP_PORT` | Dapr sidecar HTTP port | No (default: 3500) |
+
+> **Note:** The pubsub component name is hardcoded as `pubsub` in `src/messaging/factory.py`. The Dapr component YAML file must use `name: pubsub` to match.
 
 #### 6.2.2 Service Bus Provider (Azure)
 
@@ -1620,12 +1629,12 @@ Service tokens for authenticating incoming service-to-service calls:
 | `SERVICEBUS_CONNECTION_STRING` | Azure Service Bus connection | Yes      |
 | `SERVICEBUS_TOPIC_NAME`        | Topic name                   | Yes      |
 
-#### 6.2.3 RabbitMQ Provider (Direct)
+#### 6.2.3 RabbitMQ Provider (Direct - Local Development without Dapr)
 
-| Variable            | Description                | Required |
-| ------------------- | -------------------------- | -------- |
-| `RABBITMQ_URL`      | RabbitMQ connection string | Yes      |
-| `RABBITMQ_EXCHANGE` | Exchange name              | Yes      |
+| Variable            | Description                | Required                         |
+| ------------------- | -------------------------- | -------------------------------- |
+| `RABBITMQ_URL`      | RabbitMQ connection string | Yes                              |
+| `RABBITMQ_EXCHANGE` | Exchange name              | No (default: `inventory-events`) |
 
 ---
 
@@ -1703,7 +1712,6 @@ All logs use JSON structured format for machine parseability:
 | Environment | Log Level | Destinations              | Additional Settings                   |
 | ----------- | --------- | ------------------------- | ------------------------------------- |
 | Development | `DEBUG`   | Console (pretty-printed)  | Full stack traces, SQL queries logged |
-| Staging     | `INFO`    | Console + File            | Request/response bodies (sanitized)   |
 | Production  | `WARNING` | Console + Centralized log | No sensitive data, no stack traces    |
 
 #### 8.2.3 Required Log Events

@@ -33,7 +33,7 @@ Copy-Item .env.local .env
 The `.env.local` file contains:
 
 ```bash
-PORT=8004
+PORT=8005
 
 # Flask Configuration
 FLASK_ENV=development
@@ -42,13 +42,8 @@ SECRET_KEY=your-dev-secret-key-change-me
 # Database Configuration
 DATABASE_URL=mysql+pymysql://admin:admin123@localhost:3306/inventory_service_db
 
-# Messaging Configuration - Direct RabbitMQ
+# Messaging Configuration - Direct RabbitMQ (without Dapr)
 MESSAGING_PROVIDER=rabbitmq
-RABBITMQ_HOST=localhost
-RABBITMQ_PORT=5672
-RABBITMQ_USERNAME=guest
-RABBITMQ_PASSWORD=guest
-RABBITMQ_VHOST=/
 RABBITMQ_URL=amqp://guest:guest@localhost:5672/
 RABBITMQ_EXCHANGE=inventory-events
 
@@ -63,11 +58,16 @@ WEB_BFF_TOKEN=svc-web-bff-4ff5876fc86cc45a18d88e5d
 
 # Logging
 LOG_LEVEL=DEBUG
+LOG_FORMAT=console
+LOG_TO_CONSOLE=true
+LOG_TO_FILE=false
+LOG_FILE_PATH=./logs/inventory-service.log
 ```
 
 > **Note**:
 >
 > - `MESSAGING_PROVIDER=rabbitmq` uses direct RabbitMQ connection (no Dapr required)
+> - The code only uses `RABBITMQ_URL` and `RABBITMQ_EXCHANGE` (not individual host/port/user/password vars)
 > - `JWT_SECRET` is required for non-Dapr mode (in Dapr mode, it's retrieved from the Secret Store)
 > - Service tokens must match tokens configured in calling services
 
@@ -98,7 +98,7 @@ Expected output:
 ```
 * Serving Flask app 'src'
 * Debug mode: on
-* Running on http://0.0.0.0:8004
+* Running on http://0.0.0.0:8005
 ```
 
 ---
@@ -109,13 +109,13 @@ Expected output:
 
 ```bash
 # Basic health check
-curl http://localhost:8004/health
+curl http://localhost:8005/health
 
 # Readiness check (verifies database connection)
-curl http://localhost:8004/health/ready
+curl http://localhost:8005/health/ready
 
 # Liveness check
-curl http://localhost:8004/health/live
+curl http://localhost:8005/health/live
 ```
 
 ## Step 4: Run Tests

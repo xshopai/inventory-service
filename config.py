@@ -43,11 +43,24 @@ def get_database_uri():
     return f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
 
 
+def get_flask_secret_key():
+    """
+    Get Flask SECRET_KEY - tries Dapr secrets first, then env vars.
+    """
+    try:
+        from src.utils.secret_manager import get_flask_secret_key
+        return get_flask_secret_key()
+    except Exception:
+        pass
+    
+    return os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
+
+
 class Config:
     """Base configuration"""
     
-    # Flask
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
+    # Flask - loaded from Dapr secrets or env vars
+    SECRET_KEY = get_flask_secret_key()
     
     # Database - use lazy loading function instead of direct environment variables
     SQLALCHEMY_DATABASE_URI = None  # Will be set at runtime

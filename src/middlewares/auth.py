@@ -9,7 +9,7 @@ import os
 from functools import wraps
 from flask import request, g
 import logging
-from src.utils.secret_manager import get_jwt_config
+from src.utils.secret_manager import get_jwt_config, get_service_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -22,20 +22,12 @@ _service_tokens = None
 
 def _get_service_tokens():
     """
-    Get service token configuration from environment.
+    Get service token configuration from Dapr Secret Store or environment.
     Used for validating incoming requests from other services.
     """
     global _service_tokens
     if _service_tokens is None:
-        _service_tokens = {
-            'product-service': os.getenv('PRODUCT_SERVICE_TOKEN'),
-            'order-service': os.getenv('ORDER_SERVICE_TOKEN'),
-            'cart-service': os.getenv('CART_SERVICE_TOKEN'),
-            'web-bff': os.getenv('WEB_BFF_TOKEN')
-        }
-        # Filter out None values
-        _service_tokens = {k: v for k, v in _service_tokens.items() if v}
-        logger.info(f'Service tokens loaded for {len(_service_tokens)} services')
+        _service_tokens = get_service_tokens()
     return _service_tokens
 
 
