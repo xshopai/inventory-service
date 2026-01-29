@@ -1,6 +1,12 @@
 """
 Secret Manager Utility
 Manages secrets retrieval using Dapr Secret Store building block
+
+Key Vault Secret Naming Convention:
+- xshopai-{resource}-{type}-connection : Database/service connections (server/account level)
+  Examples: xshopai-mysql-server-connection, xshopai-cosmos-account-connection
+- xshopai-{name} : Other platform-wide secrets (e.g., xshopai-jwt-secret)
+- svc-{service}-token : Service identity tokens (e.g., svc-product-token)
 """
 import os
 import logging
@@ -8,6 +14,30 @@ from typing import Dict, Any, Optional
 from dapr.clients import DaprClient
 
 logger = logging.getLogger(__name__)
+
+# Key Vault secret name mappings (code name -> Key Vault name)
+# Server/account-level connection strings - services append their database name
+SECRET_KEY_MAPPING = {
+    # Database connections (server/account-level, no db specified - services append their db)
+    'DATABASE_URL': 'xshopai-mysql-server-connection',  # URL format: mysql+pymysql://user:pass@host:port
+    'MYSQL_SERVER_CONNECTION': 'xshopai-mysql-server-connection',
+    'POSTGRES_SERVER_CONNECTION': 'xshopai-postgres-server-connection',
+    'COSMOS_ACCOUNT_CONNECTION': 'xshopai-cosmos-account-connection',
+    'SQL_SERVER_CONNECTION': 'xshopai-sql-server-connection',
+    # Messaging & Cache
+    'REDIS_PASSWORD': 'xshopai-redis-password',
+    'SERVICEBUS_CONNECTION': 'xshopai-servicebus-connection',
+    # Security
+    'JWT_SECRET': 'xshopai-jwt-secret',
+    'FLASK_SECRET_KEY': 'xshopai-flask-secret',
+    # Observability (connection string includes instrumentation key + endpoints)
+    'APPINSIGHTS_CONNECTION': 'xshopai-appinsights-connection',
+    # Service tokens
+    'PRODUCT_SERVICE_TOKEN': 'svc-product-token',
+    'ORDER_SERVICE_TOKEN': 'svc-order-token',
+    'CART_SERVICE_TOKEN': 'svc-cart-token',
+    'WEB_BFF_TOKEN': 'svc-webbff-token',
+}
 
 
 class DaprSecretManager:
@@ -17,12 +47,22 @@ class DaprSecretManager:
         self.secret_store_name = 'secretstore'
         self.dapr_client = DaprClient()
     
+    def _get_kv_key(self, key: str) -> str:
+        """
+        Get the Key Vault secret name for a given code key.
+        Uses mapping table, falls back to lowercase with hyphens.
+        """
+        if key in SECRET_KEY_MAPPING:
+            return SECRET_KEY_MAPPING[key]
+        # Fallback: convert to lowercase and replace underscores with hyphens
+        return key.lower().replace('_', '-')
+    
     def get_secret(self, key: str) -> str:
         """
         Get a single secret value from Dapr Secret Store
         
         Args:
-            key: Secret key to retrieve
+            key: Secret key to retrieve (code name, will be mapped to KV name)
             
         Returns:
             Secret value
@@ -31,17 +71,21 @@ class DaprSecretManager:
             Exception if secret not found or error occurs
         """
         try:
+            # Map code key to Key Vault secret name
+            kv_key = self._get_kv_key(key)
+            
             secret_response = self.dapr_client.get_secret(
                 store_name=self.secret_store_name,
-                key=key
+                key=kv_key
             )
             
             if secret_response and secret_response.secret:
-                value = secret_response.secret.get(key)
+                # Azure Key Vault returns the key name
+                value = secret_response.secret.get(kv_key)
                 if value:
                     return value
             
-            raise Exception(f"Secret '{key}' not found in store '{self.secret_store_name}'")
+            raise Exception(f"Secret '{kv_key}' not found in store '{self.secret_store_name}'")
             
         except Exception as e:
             logger.error(f"Error retrieving secret '{key}': {str(e)}")

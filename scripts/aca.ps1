@@ -240,22 +240,31 @@ if ($dbExists) {
     Write-Success "Database '$DbName' created"
 }
 
-# Get MySQL credentials from Key Vault
-Write-Info "Retrieving MySQL credentials from Key Vault..."
-$MysqlPassword = az keyvault secret show --vault-name $KeyVault --name "mysql-password" --query value -o tsv 2>$null
+# Get MySQL credentials from Key Vault (using server-level connection string)
+Write-Info "Retrieving MySQL connection from Key Vault..."
+$MysqlServerConnection = az keyvault secret show --vault-name $KeyVault --name "xshopai-mysql-server-connection" --query value -o tsv 2>$null
 
-if ([string]::IsNullOrWhiteSpace($MysqlPassword)) {
-    Write-Warning "Could not retrieve MySQL password from Key Vault"
+if ([string]::IsNullOrWhiteSpace($MysqlServerConnection)) {
+    Write-Warning "Could not retrieve MySQL connection from Key Vault (xshopai-mysql-server-connection)"
+    Write-Info "Falling back to manual credentials..."
     $securePassword = Read-Host "Enter MySQL admin password" -AsSecureString
     $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
     $MysqlPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
+    $MysqlUsername = "xshopaiadmin"
+    $DbPasswordEncoded = [System.Uri]::EscapeDataString($MysqlPassword)
+    $DbConnection = "mysql+pymysql://${MysqlUsername}:${DbPasswordEncoded}@${MysqlHost}:3306/${DbName}?ssl_verify_cert=false&ssl_verify_identity=false"
+} else {
+    # Server connection format: mysql+pymysql://user:pass@host:port?ssl_params
+    # Append database name to create full connection string
+    if ($MysqlServerConnection -match '\?') {
+        # Has query params, insert database before ?
+        $DbConnection = $MysqlServerConnection -replace '\?', "/${DbName}?"
+    } else {
+        # No query params, just append
+        $DbConnection = "${MysqlServerConnection}/${DbName}"
+    }
+    Write-Success "MySQL connection retrieved from Key Vault"
 }
-
-$MysqlUsername = "xshopaiadmin"
-
-# URL-encode the password
-$DbPasswordEncoded = [System.Uri]::EscapeDataString($MysqlPassword)
-$DbConnection = "mysql+pymysql://${MysqlUsername}:${DbPasswordEncoded}@${MysqlHost}:3306/${DbName}?ssl_verify_cert=false&ssl_verify_identity=false"
 
 Write-Success "Database connection configured"
 

@@ -132,14 +132,9 @@ else
     print_success "Database created: $DB_NAME"
 fi
 
-# Get MySQL password from Key Vault
-MYSQL_PASSWORD=$(az keyvault secret show --vault-name "$KEY_VAULT" --name "mysql-password" --query value -o tsv 2>/dev/null || echo "")
-[ -z "$MYSQL_PASSWORD" ] && { read -sp "Enter MySQL password: " MYSQL_PASSWORD; echo ""; }
-
-# Build connection string with SSL (Azure MySQL requires secure transport)
-DB_PASSWORD_ENCODED=$(python -c "import urllib.parse; print(urllib.parse.quote('$MYSQL_PASSWORD', safe=''))")
-DB_CONNECTION="mysql+pymysql://$MYSQL_USERNAME:$DB_PASSWORD_ENCODED@$MYSQL_HOST:3306/$DB_NAME?ssl_ca=/etc/ssl/certs/ca-certificates.crt"
-print_success "Database connection configured"
+# Note: DATABASE_URL is stored in Key Vault and retrieved via Dapr Secret Store
+print_info "Database credentials are stored in Key Vault: $KEY_VAULT"
+print_info "The app retrieves DATABASE_URL from Key Vault via Dapr Secret Store"
 
 # ============================================================================
 # CONFIRMATION
@@ -186,9 +181,10 @@ FLASK_CONFIG="development"
 [ "$ENVIRONMENT" = "prod" ] && FLASK_CONFIG="production"
 
 # Environment variables for the container
+# NOTE: Secrets (DATABASE_URL, JWT_SECRET, etc.) are NOT passed as env vars!
+#       The app retrieves them from Azure Key Vault via Dapr Secret Store
 ENV_VARS=(
     "FLASK_ENV=$FLASK_CONFIG"
-    "DATABASE_URL=$DB_CONNECTION"
     "MESSAGING_PROVIDER=dapr"
 )
 

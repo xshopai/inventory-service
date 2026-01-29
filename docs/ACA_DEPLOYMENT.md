@@ -142,15 +142,11 @@ az acr repository list --name $ACR_NAME --output table
 ### Step 6: Configure Database Connection
 
 ```bash
-# Get MySQL password from Key Vault
-MYSQL_PASSWORD=$(az keyvault secret show --vault-name $KEY_VAULT --name "mysql-password" --query value -o tsv)
-MYSQL_USERNAME="xshopaiadmin"
+# Get MySQL connection string from Key Vault (server-level, URL format)
+MYSQL_CONNECTION=$(az keyvault secret show --vault-name $KEY_VAULT --name "xshopai-mysql-server-connection" --query value -o tsv)
 
-# URL-encode password (handles special characters)
-DB_PASSWORD_ENCODED=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$MYSQL_PASSWORD', safe=''))")
-
-# Build connection string with SSL (Azure MySQL requires secure transport)
-DB_CONNECTION="mysql+pymysql://$MYSQL_USERNAME:$DB_PASSWORD_ENCODED@$MYSQL_HOST:3306/$DB_NAME?ssl_ca=/etc/ssl/certs/ca-certificates.crt"
+# Append database name to connection string
+DB_CONNECTION="${MYSQL_CONNECTION}/${DB_NAME}"
 ```
 
 ### Step 7: Deploy Container App
