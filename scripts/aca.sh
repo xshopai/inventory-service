@@ -132,9 +132,50 @@ else
     print_success "Database created: $DB_NAME"
 fi
 
-# Note: DATABASE_URL is stored in Key Vault and retrieved via Dapr Secret Store
-print_info "Database credentials are stored in Key Vault: $KEY_VAULT"
-print_info "The app retrieves DATABASE_URL from Key Vault via Dapr Secret Store"
+# Get DATABASE_URL from Key Vault and append database name
+print_info "Retrieving database credentials from Key Vault..."
+MYSQL_SERVER_URL=$(az keyvault secret show --vault-name "$KEY_VAULT" --name xshopai-mysql-server-connection --query "value" -o tsv 2>/dev/null)
+if [ -z "$MYSQL_SERVER_URL" ]; then
+    print_error "Failed to retrieve MySQL connection from Key Vault"
+    exit 1
+fi
+
+# Append database name to connection URL
+# URL format: mysql+pymysql://user:pass@host:port?ssl_ca=...
+# Need: mysql+pymysql://user:pass@host:port/db_name?ssl_ca=...
+if [[ "$MYSQL_SERVER_URL" == *"?"* ]]; then
+    DATABASE_URL="${MYSQL_SERVER_URL%%\?*}/${DB_NAME}?${MYSQL_SERVER_URL#*\?}"
+else
+    DATABASE_URL="${MYSQL_SERVER_URL}/${DB_NAME}"
+fi
+print_success "Database URL configured for: $DB_NAME"
+
+# ============================================================================
+# NETWORK CONFIGURATION - Add Container Apps IP to MySQL Firewall
+# ============================================================================
+print_header "Network Configuration"
+
+CAE_STATIC_IP=$(az containerapp env show --name "$CONTAINER_ENV" --resource-group "$RESOURCE_GROUP" --query "properties.staticIp" -o tsv 2>/dev/null)
+if [ -n "$CAE_STATIC_IP" ]; then
+    print_info "Container Apps Environment IP: $CAE_STATIC_IP"
+    
+    # Check if firewall rule exists
+    if az mysql flexible-server firewall-rule show --resource-group "$RESOURCE_GROUP" --name "$MYSQL_SERVER" --rule-name AllowContainerApps &>/dev/null; then
+        print_success "Firewall rule 'AllowContainerApps' already exists"
+    else
+        print_info "Adding Container Apps IP to MySQL firewall..."
+        az mysql flexible-server firewall-rule create \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$MYSQL_SERVER" \
+            --rule-name AllowContainerApps \
+            --start-ip-address "$CAE_STATIC_IP" \
+            --end-ip-address "$CAE_STATIC_IP" \
+            --output none
+        print_success "Firewall rule 'AllowContainerApps' created"
+    fi
+else
+    print_warning "Could not get Container Apps Environment IP - MySQL firewall may need manual configuration"
+fi
 
 # ============================================================================
 # CONFIRMATION
@@ -182,11 +223,11 @@ FLASK_CONFIG="development"
 [ "$ENVIRONMENT" = "prod" ] && FLASK_CONFIG="production"
 
 # Environment variables for the container
-# NOTE: Secrets (DATABASE_URL, JWT_SECRET, etc.) are NOT passed as env vars!
-#       The app retrieves them from Azure Key Vault via Dapr Secret Store
+# DATABASE_URL is passed directly (more reliable than Dapr secret store)
 ENV_VARS=(
     "FLASK_ENV=$FLASK_CONFIG"
     "MESSAGING_PROVIDER=dapr"
+    "DATABASE_URL=$DATABASE_URL"
 )
 
 if az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP" &>/dev/null; then
