@@ -21,11 +21,11 @@ PROJECT_NAME="xshopai"
 DB_NAME="inventory_service_db"
 MYSQL_USERNAME="xshopaiadmin"
 
-# Container Resources
-CPU="0.5"
-MEMORY="1.0Gi"
-MIN_REPLICAS=1
-MAX_REPLICAS=5
+# Container Resources (Production-level)
+CPU="1.0"
+MEMORY="2.0Gi"
+MIN_REPLICAS=2
+MAX_REPLICAS=10
 
 # Dapr Configuration (fixed for Azure Container Apps)
 DAPR_HTTP_PORT=3500
@@ -132,23 +132,9 @@ else
     print_success "Database created: $DB_NAME"
 fi
 
-# Get DATABASE_URL from Key Vault and append database name
-print_info "Retrieving database credentials from Key Vault..."
-MYSQL_SERVER_URL=$(az keyvault secret show --vault-name "$KEY_VAULT" --name xshopai-mysql-server-connection --query "value" -o tsv 2>/dev/null)
-if [ -z "$MYSQL_SERVER_URL" ]; then
-    print_error "Failed to retrieve MySQL connection from Key Vault"
-    exit 1
-fi
-
-# Append database name to connection URL
-# URL format: mysql+pymysql://user:pass@host:port?ssl_ca=...
-# Need: mysql+pymysql://user:pass@host:port/db_name?ssl_ca=...
-if [[ "$MYSQL_SERVER_URL" == *"?"* ]]; then
-    DATABASE_URL="${MYSQL_SERVER_URL%%\?*}/${DB_NAME}?${MYSQL_SERVER_URL#*\?}"
-else
-    DATABASE_URL="${MYSQL_SERVER_URL}/${DB_NAME}"
-fi
-print_success "Database URL configured for: $DB_NAME"
+# Note: Database credentials are NOT passed as env vars
+# The app reads secrets from Dapr secretstore (Azure Key Vault) at runtime
+print_success "Database configured (credentials via Dapr secretstore)"
 
 # ============================================================================
 # NETWORK CONFIGURATION - Add Container Apps IP to MySQL Firewall
@@ -222,12 +208,14 @@ ACR_PASSWORD=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].v
 FLASK_CONFIG="development"
 [ "$ENVIRONMENT" = "prod" ] && FLASK_CONFIG="production"
 
-# Environment variables for the container
-# DATABASE_URL is passed directly (more reliable than Dapr secret store)
+# Environment variables for the container (non-secret config only)
+# Secrets are read from Dapr secretstore (Key Vault) at runtime
 ENV_VARS=(
     "FLASK_ENV=$FLASK_CONFIG"
     "MESSAGING_PROVIDER=dapr"
-    "DATABASE_URL=$DATABASE_URL"
+    "DB_NAME=$DB_NAME"
+    "SERVICE_NAME=$SERVICE_NAME"
+    "PORT=$APP_PORT"
 )
 
 if az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP" &>/dev/null; then
@@ -260,6 +248,7 @@ else
         --dapr-app-port "$APP_PORT" \
         --env-vars "${ENV_VARS[@]}" \
         ${IDENTITY_ID:+--user-assigned "$IDENTITY_ID"} \
+        --tags "project=$PROJECT_NAME" "environment=$ENVIRONMENT" "suffix=$SUFFIX" "service=$SERVICE_NAME" \
         --output none
 fi
 print_success "Container app deployed"

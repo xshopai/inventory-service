@@ -2,6 +2,7 @@
 Event Publisher for Inventory Service
 Uses Messaging Abstraction Layer per Architecture spec section 5.5
 """
+import os
 from flask import current_app
 from typing import Dict, Any, Optional
 from datetime import datetime
@@ -19,7 +20,8 @@ class InventoryEventPublisher:
     """
     
     def __init__(self):
-        self.service_name = "inventory-service"
+        self.service_name = os.environ.get('SERVICE_NAME', 'inventory-service')
+        self.service_version = os.environ.get('VERSION', '1.0.0')
         self._provider: Optional[MessagingProvider] = None
     
     @property

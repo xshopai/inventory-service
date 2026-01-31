@@ -4,43 +4,20 @@ from datetime import timedelta
 
 def get_database_uri():
     """
-    Get database URI - checks DATABASE_URL first, then individual env vars, then Dapr secrets.
+    Get database URI.
     
-    Priority order:
-    1. DATABASE_URL (recommended - single connection string)
-    2. Individual env vars (MYSQL_USER, MYSQL_PASSWORD, etc.)
-    3. Dapr secrets (for production with Dapr sidecar)
-    4. Defaults (for local development)
+    Uses xshopai-mysql-server-connection + DB_NAME (same env vars in local and ACA).
+    Falls back to defaults for local development.
     """
-    # Priority 1: Use DATABASE_URL if set (simplest, cloud-friendly)
-    database_url = os.environ.get('DATABASE_URL')
-    if database_url:
-        return database_url
-    
-    # Priority 2: Build from individual env vars (legacy support)
-    user = os.environ.get('MYSQL_USER')
-    password = os.environ.get('MYSQL_PASSWORD')
-    host = os.environ.get('DATABASE_HOST')
-    database = os.environ.get('MYSQL_DATABASE')
-    
-    if all([user, password, host, database]):
-        port = os.environ.get('DATABASE_PORT', '3306')
-        return f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
-    
-    # Priority 3: Try Dapr secrets (for production with Dapr sidecar)
+    # Try Dapr secrets / env vars (xshopai-mysql-server-connection + DB_NAME)
     try:
         from src.utils.secret_manager import get_database_url
         return get_database_url()
     except Exception:
         pass
     
-    # Priority 4: Defaults (local development fallback)
-    user = user or 'admin'
-    password = password or 'admin123'
-    host = host or 'localhost'
-    port = os.environ.get('DATABASE_PORT', '3306')
-    database = database or 'inventory_service_db'
-    return f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
+    # Fallback: Defaults for local development
+    return "mysql+pymysql://admin:admin123@localhost:3306/inventory_service_db"
 
 
 def get_flask_secret_key():
@@ -53,7 +30,8 @@ def get_flask_secret_key():
     except Exception:
         pass
     
-    return os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
+    # Fallback to env var (hyphenated key - same as Key Vault)
+    return os.environ.get('xshopai-flask-secret') or 'dev-secret-key-change-in-production'
 
 
 class Config:
@@ -85,16 +63,12 @@ class Config:
     LOG_TO_CONSOLE = os.environ.get('LOG_TO_CONSOLE', 'true').lower() == 'true'
     LOG_TO_FILE = os.environ.get('LOG_TO_FILE', 'false').lower() == 'true'
     LOG_FILE_PATH = os.environ.get('LOG_FILE_PATH', './logs/inventory-service.log')
-    
-
-
 
 class DevelopmentConfig(Config):
     """Development configuration"""
     DEBUG = True
     LOG_LEVEL = 'DEBUG'
     # MySQL is the primary database for all environments
-
 
 class TestingConfig(Config):
     """Testing configuration"""
