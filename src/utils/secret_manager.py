@@ -16,6 +16,7 @@ Inventory Service Required Secrets:
 - xshopai-mysql-server-connection : MySQL server connection (db name appended at runtime)
 - xshopai-jwt-secret              : JWT signing secret
 - xshopai-flask-secret            : Flask session secret
+- xshopai-appinsights-connection  : Application Insights connection string
 - xshopai-svc-product-token       : Product service auth token
 - xshopai-svc-order-token         : Order service auth token
 - xshopai-svc-cart-token          : Cart service auth token
@@ -32,6 +33,7 @@ REQUIRED_SECRETS = [
     'xshopai-mysql-server-connection',
     'xshopai-jwt-secret',
     'xshopai-flask-secret',
+    'xshopai-appinsights-connection',
     'xshopai-svc-product-token',
     'xshopai-svc-order-token',
     'xshopai-svc-cart-token',
@@ -148,6 +150,29 @@ class SecretManager:
                 logger.warning(f"Token for '{service}' not configured")
         
         return tokens
+    
+    def get_appinsights_connection_string(self) -> str:
+        """
+        Get Application Insights connection string.
+        Returns None if not configured (telemetry will be disabled).
+        
+        Checks in order:
+        1. APPLICATIONINSIGHTS_CONNECTION_STRING env var (standard Azure SDK name)
+        2. Dapr secretstore: xshopai-appinsights-connection
+        3. xshopai-appinsights-connection env var (fallback)
+        """
+        # Check standard Azure SDK env var first
+        conn_string = os.environ.get('APPLICATIONINSIGHTS_CONNECTION_STRING')
+        if conn_string:
+            logger.debug("App Insights connection loaded from APPLICATIONINSIGHTS_CONNECTION_STRING env")
+            return conn_string
+        
+        # Fall back to Dapr secretstore / legacy env var
+        try:
+            return self.get_secret('xshopai-appinsights-connection')
+        except RuntimeError:
+            logger.info("App Insights connection not configured - telemetry disabled")
+            return None
 
 
 # Singleton
@@ -169,6 +194,9 @@ def get_jwt_config() -> Dict[str, Any]:
 
 def get_flask_secret_key() -> str:
     return get_secret_manager().get_flask_secret_key()
+
+def get_appinsights_connection_string() -> str:
+    return get_secret_manager().get_appinsights_connection_string()
 
 def get_service_tokens() -> Dict[str, str]:
     return get_secret_manager().get_service_tokens()

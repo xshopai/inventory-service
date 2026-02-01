@@ -91,9 +91,11 @@ EXPOSE 8005
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import urllib.request; import os; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\", \"8005\")}/health/ready')" || exit 1
 
-# Start production server with gunicorn (workers configurable via WORKERS env var, default: 4)
+# Start production server with gunicorn
 # Migrations are run automatically on startup before starting the server
-CMD sh -c "echo 'Running database migrations...' && flask db upgrade && echo 'Migrations complete. Starting server...' && gunicorn --bind 0.0.0.0:${PORT:-8005} --workers ${WORKERS:-4} --timeout 120 run:app"
+# FLASK_SKIP_AZURE_MONITOR=true prevents Azure Monitor from initializing during flask db upgrade
+# --preload ensures OpenTelemetry is initialized once before workers fork
+CMD sh -c "echo 'Running database migrations...' && FLASK_SKIP_AZURE_MONITOR=true flask db upgrade && echo 'Migrations complete. Starting server...' && gunicorn --bind 0.0.0.0:\${PORT:-8005} --workers 4 --timeout 120 --preload run:app"
 
 # Labels for better image management and security scanning
 LABEL maintainer="xshopai Team"

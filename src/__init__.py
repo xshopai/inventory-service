@@ -6,6 +6,43 @@ from flask import Flask
 from src.models import db
 
 
+def configure_azure_monitor(app):
+    """
+    Configure Azure Monitor / Application Insights for distributed tracing.
+    Connection string is retrieved from Dapr secretstore (Key Vault).
+    """
+    try:
+        from src.utils.secret_manager import get_appinsights_connection_string
+        connection_string = get_appinsights_connection_string()
+        
+        if not connection_string:
+            app.logger.info("Application Insights not configured - telemetry disabled")
+            return False
+        
+        from azure.monitor.opentelemetry import configure_azure_monitor as setup_azure_monitor
+        
+        setup_azure_monitor(
+            connection_string=connection_string,
+            enable_live_metrics=True,
+            instrumentation_options={
+                "azure_sdk": {"enabled": True},
+                "flask": {"enabled": True},
+                "requests": {"enabled": True},
+                "psycopg2": {"enabled": False},  # Not using PostgreSQL
+            }
+        )
+        
+        app.logger.info("Application Insights configured successfully")
+        return True
+        
+    except ImportError as e:
+        app.logger.warning(f"Azure Monitor SDK not installed: {e}")
+        return False
+    except Exception as e:
+        app.logger.warning(f"Failed to configure Application Insights: {e}")
+        return False
+
+
 def configure_logging(app):
     """
     Configure logging based on environment variables.
@@ -77,6 +114,9 @@ def create_app(config_name='default'):
     # Load environment variables
     from dotenv import load_dotenv
     load_dotenv()
+    
+    # NOTE: Azure Monitor is configured in run.py AFTER app creation
+    # This avoids issues with flask CLI commands (flask db upgrade)
     
     # Set database URI from Dapr secrets (lazy loading)
     app.config['SQLALCHEMY_DATABASE_URI'] = get_database_uri()

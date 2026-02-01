@@ -208,14 +208,25 @@ ACR_PASSWORD=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].v
 FLASK_CONFIG="development"
 [ "$ENVIRONMENT" = "prod" ] && FLASK_CONFIG="production"
 
-# Environment variables for the container (non-secret config only)
+# Retrieve Application Insights connection string from Key Vault
+# This ensures Azure Monitor telemetry works even before Dapr sidecar is ready
+print_info "Retrieving Application Insights connection string from Key Vault..."
+APP_INSIGHTS_CONN=$(az keyvault secret show --vault-name "$KEY_VAULT" --name "xshopai-appinsights-connection" --query "value" -o tsv 2>/dev/null || echo "")
+[ -n "$APP_INSIGHTS_CONN" ] && print_success "Application Insights connection string retrieved" || print_warning "Application Insights not configured (telemetry disabled)"
+
+# Environment variables for the container
 # Secrets are read from Dapr secretstore (Key Vault) at runtime
+# Exception: App Insights connection string is passed as env var to avoid race condition with Dapr sidecar startup
 ENV_VARS=(
     "FLASK_ENV=$FLASK_CONFIG"
     "MESSAGING_PROVIDER=dapr"
     "DB_NAME=$DB_NAME"
     "SERVICE_NAME=$SERVICE_NAME"
     "PORT=$APP_PORT"
+    "OTEL_SERVICE_NAME=$SERVICE_NAME"
+    "OTEL_RESOURCE_ATTRIBUTES=service.version=1.0.0"
+    "OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true"
+    "APPLICATIONINSIGHTS_CONNECTION_STRING=$APP_INSIGHTS_CONN"
 )
 
 if az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP" &>/dev/null; then

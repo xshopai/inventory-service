@@ -29,3 +29,7 @@ python-dateutil==2.9.0
 
 # Production
 gunicorn==23.0.0
+
+# Azure Monitor / Application Insights (OpenTelemetry)
+azure-monitor-opentelemetry==1.6.4
+opentelemetry-instrumentation-flask==0.49b2
