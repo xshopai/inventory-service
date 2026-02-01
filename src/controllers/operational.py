@@ -120,3 +120,55 @@ def metrics():
             'error': 'Metrics collection failed',
             'details': str(e),
         }), 500
+
+
+@operational_hp.route('/test/publish', methods=['POST'])
+def test_publish():
+    """
+    Test endpoint to publish a message to the broker.
+    For development/testing purposes only.
+    
+    Request body (optional):
+    {
+        "topic": "inventory.test.event",
+        "product_id": "test-product-123",
+        "quantity": 100
+    }
+    """
+    from flask import request
+    from src.utils.event_publisher import event_publisher
+    
+    try:
+        data = request.get_json() or {}
+        topic = data.get('topic', 'inventory.test.event')
+        product_id = data.get('product_id', 'test-product-123')
+        quantity = data.get('quantity', 100)
+        
+        logger.info(f"Test publish requested: topic={topic}, product_id={product_id}")
+        
+        # Use the event publisher to publish a test event
+        success = event_publisher.publish_stock_updated(
+            product_id=product_id,
+            quantity=quantity,
+            warehouse="test-warehouse"
+        )
+        
+        return jsonify({
+            'success': success,
+            'message': f"Published test event to topic: inventory.stock.updated",
+            'data': {
+                'topic': 'inventory.stock.updated',
+                'product_id': product_id,
+                'quantity': quantity,
+                'warehouse': 'test-warehouse'
+            },
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        }), 200 if success else 500
+        
+    except Exception as e:
+        logger.error(f"Test publish failed: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        }), 500
