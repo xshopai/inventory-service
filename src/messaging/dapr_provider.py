@@ -10,6 +10,7 @@ For deployment to:
 from dapr.clients import DaprClient
 import json
 import logging
+import os
 from typing import Dict, Any, Optional
 
 from .provider import MessagingProvider
@@ -30,10 +31,12 @@ class DaprProvider(MessagingProvider):
         
         Args:
             pubsub_name: Name of Dapr pub/sub component (default: pubsub)
-            dapr_http_port: Dapr sidecar HTTP port (optional, defaults to 3500 from env)
+            dapr_http_port: Dapr sidecar HTTP port (optional, sets DAPR_HTTP_PORT env var if provided)
         """
         self.pubsub_name = pubsub_name
-        self.dapr_http_port = dapr_http_port
+        # DaprClient reads from environment variables, so set them if a port is provided
+        if dapr_http_port:
+            os.environ['DAPR_HTTP_PORT'] = str(dapr_http_port)
         logger.info(f"Initialized DaprProvider with pubsub: {pubsub_name}")
     
     def publish_event(self, topic: str, event_data: Dict[str, Any],
@@ -53,13 +56,11 @@ class DaprProvider(MessagingProvider):
             bool: True if published successfully, False on error
         """
         try:
-            # Create Dapr client with optional port override
-            client_kwargs = {}
-            if self.dapr_http_port:
-                client_kwargs['http_port'] = self.dapr_http_port
-            
-            # Use context manager to ensure proper cleanup
-            with DaprClient(**client_kwargs) as client:
+            # DaprClient uses environment variables for configuration:
+            # - DAPR_GRPC_ENDPOINT or DAPR_RUNTIME_HOST + DAPR_GRPC_PORT (for gRPC)
+            # - DAPR_HTTP_ENDPOINT or DAPR_RUNTIME_HOST + DAPR_HTTP_PORT (for HTTP)
+            # In Azure Container Apps, Dapr sidecar is at localhost:3500 (HTTP) / localhost:50001 (gRPC)
+            with DaprClient() as client:
                 # Publish event to Dapr pub/sub component
                 client.publish_event(
                     pubsub_name=self.pubsub_name,  # Component name from config
