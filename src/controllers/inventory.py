@@ -8,7 +8,7 @@ from marshmallow import ValidationError
 from src.services import InventoryService
 from src.middlewares.auth import require_admin, require_service_token
 from src.utils.schemas import (
-    InventoryItemRequestSchema, InventoryItemResponseSchema,
+    InventoryItemRequestSchema, InventoryItemUpdateSchema, InventoryItemResponseSchema,
     StockAdjustmentRequestSchema, StockMovementResponseSchema,
     InventorySearchSchema, BulkOperationRequestSchema
 )
@@ -32,6 +32,7 @@ stock_ns = api.namespace('inventory/stock', description='Stock query operations'
 
 # Initialize schemas
 inventory_request_schema = InventoryItemRequestSchema()
+inventory_update_schema = InventoryItemUpdateSchema()
 inventory_response_schema = InventoryItemResponseSchema()
 stock_adjustment_schema = StockAdjustmentRequestSchema()
 stock_movement_schema = StockMovementResponseSchema()
@@ -148,13 +149,12 @@ class InventoryItem(Resource):
 
         @api.doc('update_inventory')
         @api.expect(inventory_item_model)
-        @api.marshal_with(inventory_item_model)
         @require_service_token
         def put(self, identifier):
             """Update inventory item by SKU (Service Token required)"""
             try:
-                # Validate request data
-                data = inventory_request_schema.load(request.json)
+                # Validate request data (SKU comes from URL, not body)
+                data = inventory_update_schema.load(request.json)
                 
                 inventory_service = InventoryService()
                 item = inventory_service.update_inventory_item(identifier, **data)
@@ -165,8 +165,8 @@ class InventoryItem(Resource):
                 # Publish inventory.stock.updated event
                 correlation_id = getattr(g, 'correlation_id', None)
                 event_publisher.publish_stock_updated(
-                    sku=item.sku,
-                    quantity=item.quantity_available,
+                    sku=item['sku'],
+                    quantity=item['quantity_available'],
                     correlation_id=correlation_id
                 )
                 

@@ -42,7 +42,7 @@ class InventoryEventPublisher:
             "time": datetime.utcnow().isoformat() + "Z",
             "datacontenttype": "application/json",
             "data": data,
-            "correlationid": correlation_id or str(uuid.uuid4())
+            "correlationId": correlation_id or str(uuid.uuid4())
         }
     
     def publish_event(self, event_type: str, data: Dict[str, Any], 

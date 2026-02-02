@@ -134,7 +134,13 @@ class SecretManager:
         return self.get_secret('xshopai-flask-secret')
     
     def get_service_tokens(self) -> Dict[str, str]:
-        """Get service tokens for service-to-service auth."""
+        """
+        Get service tokens for service-to-service auth.
+        
+        Checks environment variables first (set during ACA deployment),
+        then falls back to Dapr secretstore. This avoids race conditions
+        with Dapr sidecar startup.
+        """
         token_keys = {
             'product-service': 'xshopai-svc-product-token',
             'order-service': 'xshopai-svc-order-token',
@@ -144,6 +150,15 @@ class SecretManager:
         
         tokens = {}
         for service, key in token_keys.items():
+            # Check env var first (hyphenated key converted to underscore for env var)
+            env_key = key.replace('-', '_').upper()
+            env_value = os.environ.get(env_key)
+            if env_value:
+                tokens[service] = env_value
+                logger.debug(f"Token for '{service}' loaded from env var {env_key}")
+                continue
+            
+            # Fall back to Dapr secretstore
             try:
                 tokens[service] = self.get_secret(key)
             except RuntimeError:

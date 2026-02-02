@@ -4,7 +4,7 @@ from src.models import StockMovementType
 
 
 class InventoryItemRequestSchema(Schema):
-    """Schema for creating/updating inventory items"""
+    """Schema for creating inventory items (SKU required)"""
     sku = fields.Str(required=True, validate=validate.Length(min=1))
     quantity_available = fields.Int(required=True, validate=validate.Range(min=0))
     quantity_reserved = fields.Int(validate=validate.Range(min=0), load_default=0)
@@ -19,6 +19,28 @@ class InventoryItemRequestSchema(Schema):
             raise ValidationError('Reorder level cannot exceed maximum stock')
         
         if data.get('quantity_reserved', 0) > data.get('quantity_available', 0):
+            raise ValidationError('Reserved quantity cannot exceed available quantity')
+        
+        return data
+
+
+class InventoryItemUpdateSchema(Schema):
+    """Schema for updating inventory items (SKU comes from URL path)"""
+    quantity_available = fields.Int(required=True, validate=validate.Range(min=0))
+    quantity_reserved = fields.Int(validate=validate.Range(min=0))
+    reorder_level = fields.Int(validate=validate.Range(min=0))
+    max_stock = fields.Int(validate=validate.Range(min=0), allow_none=True)
+    cost_per_unit = fields.Float(validate=validate.Range(min=0), allow_none=True)
+    
+    @post_load
+    def validate_stock_levels(self, data, **kwargs):
+        if (data.get('max_stock') and data.get('reorder_level') and
+            data.get('reorder_level') > data.get('max_stock')):
+            raise ValidationError('Reorder level cannot exceed maximum stock')
+        
+        if (data.get('quantity_reserved') is not None and 
+            data.get('quantity_available') is not None and
+            data.get('quantity_reserved') > data.get('quantity_available')):
             raise ValidationError('Reserved quantity cannot exceed available quantity')
         
         return data

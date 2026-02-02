@@ -214,9 +214,19 @@ print_info "Retrieving Application Insights connection string from Key Vault..."
 APP_INSIGHTS_CONN=$(az keyvault secret show --vault-name "$KEY_VAULT" --name "xshopai-appinsights-connection" --query "value" -o tsv 2>/dev/null || echo "")
 [ -n "$APP_INSIGHTS_CONN" ] && print_success "Application Insights connection string retrieved" || print_warning "Application Insights not configured (telemetry disabled)"
 
+# Retrieve service tokens from Key Vault
+# These are passed as env vars to avoid race conditions with Dapr sidecar startup
+print_info "Retrieving service tokens from Key Vault..."
+SVC_PRODUCT_TOKEN=$(az keyvault secret show --vault-name "$KEY_VAULT" --name "xshopai-svc-product-token" --query "value" -o tsv 2>/dev/null || echo "")
+SVC_ORDER_TOKEN=$(az keyvault secret show --vault-name "$KEY_VAULT" --name "xshopai-svc-order-token" --query "value" -o tsv 2>/dev/null || echo "")
+SVC_CART_TOKEN=$(az keyvault secret show --vault-name "$KEY_VAULT" --name "xshopai-svc-cart-token" --query "value" -o tsv 2>/dev/null || echo "")
+SVC_WEBBFF_TOKEN=$(az keyvault secret show --vault-name "$KEY_VAULT" --name "xshopai-svc-webbff-token" --query "value" -o tsv 2>/dev/null || echo "")
+print_success "Service tokens retrieved"
+
 # Environment variables for the container
 # Secrets are read from Dapr secretstore (Key Vault) at runtime
-# Exception: App Insights connection string is passed as env var to avoid race condition with Dapr sidecar startup
+# Exception: App Insights connection string and service tokens are passed as env vars
+# to avoid race conditions with Dapr sidecar startup
 ENV_VARS=(
     "FLASK_ENV=$FLASK_CONFIG"
     "MESSAGING_PROVIDER=dapr"
@@ -227,6 +237,10 @@ ENV_VARS=(
     "OTEL_RESOURCE_ATTRIBUTES=service.version=1.0.0"
     "OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true"
     "APPLICATIONINSIGHTS_CONNECTION_STRING=$APP_INSIGHTS_CONN"
+    "XSHOPAI_SVC_PRODUCT_TOKEN=$SVC_PRODUCT_TOKEN"
+    "XSHOPAI_SVC_ORDER_TOKEN=$SVC_ORDER_TOKEN"
+    "XSHOPAI_SVC_CART_TOKEN=$SVC_CART_TOKEN"
+    "XSHOPAI_SVC_WEBBFF_TOKEN=$SVC_WEBBFF_TOKEN"
     "DAPR_HTTP_PORT=3500"
     "DAPR_GRPC_PORT=50001"
 )
