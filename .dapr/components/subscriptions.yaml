@@ -5,7 +5,7 @@ metadata:
 spec:
   topic: product.created
   routes:
-    default: /events/product-created
+    default: /dapr/events/product.created
   pubsubname: pubsub
   deadLetterTopic: product.created.deadletter
 scopes:
@@ -18,7 +18,7 @@ metadata:
 spec:
   topic: product.updated
   routes:
-    default: /events/product-updated
+    default: /dapr/events/product.updated
   pubsubname: pubsub
   deadLetterTopic: product.updated.deadletter
 scopes:
@@ -31,7 +31,7 @@ metadata:
 spec:
   topic: product.deleted
   routes:
-    default: /events/product-deleted
+    default: /dapr/events/product.deleted
   pubsubname: pubsub
   deadLetterTopic: product.deleted.deadletter
 scopes:
@@ -44,7 +44,7 @@ metadata:
 spec:
   topic: order.created
   routes:
-    default: /events/order-created
+    default: /dapr/events/order.created
   pubsubname: pubsub
   deadLetterTopic: order.created.deadletter
 scopes:
@@ -57,7 +57,7 @@ metadata:
 spec:
   topic: order.cancelled
   routes:
-    default: /events/order-cancelled
+    default: /dapr/events/order.cancelled
   pubsubname: pubsub
   deadLetterTopic: order.cancelled.deadletter
 scopes:
@@ -70,8 +70,34 @@ metadata:
 spec:
   topic: order.completed
   routes:
-    default: /events/order-completed
+    default: /dapr/events/order.completed
   pubsubname: pubsub
   deadLetterTopic: order.completed.deadletter
+scopes:
+  - inventory-service
+---
+apiVersion: dapr.io/v2alpha1
+kind: Subscription
+metadata:
+  name: payment-received-subscription
+spec:
+  topic: payment.received
+  routes:
+    default: /dapr/events/payment.received
+  pubsubname: pubsub
+  deadLetterTopic: payment.received.deadletter
+scopes:
+  - inventory-service
+---
+apiVersion: dapr.io/v2alpha1
+kind: Subscription
+metadata:
+  name: payment-failed-subscription
+spec:
+  topic: payment.failed
+  routes:
+    default: /dapr/events/payment.failed
+  pubsubname: pubsub
+  deadLetterTopic: payment.failed.deadletter
 scopes:
   - inventory-service

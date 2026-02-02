@@ -464,3 +464,143 @@ class InventoryEventsService:
                 extra={"error": str(e), "correlationId": event_data.get('correlationid')}
             )
             return {"status": "error", "message": str(e)}
+
+    # ============================================================================
+    # Payment Events
+    # ============================================================================
+    
+    @staticmethod
+    def handle_payment_received(event_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handle payment.received event from payment-service.
+        Confirm stock reservation (mark as confirmed).
+        """
+        try:
+            data = event_data.get('data', {})
+            order_id = data.get('orderId')
+            payment_id = data.get('paymentId')
+            correlation_id = event_data.get('correlationid')
+            
+            if not order_id:
+                raise ValueError("Missing orderId in event data")
+            
+            current_app.logger.info(
+                f"💳 Handling payment.received for order: {order_id}",
+                extra={"correlationId": correlation_id, "paymentId": payment_id}
+            )
+            
+            # Find all reservations for this order
+            reservations = Reservation.query.filter_by(
+                order_id=order_id,
+                status='reserved'
+            ).all()
+            
+            if not reservations:
+                current_app.logger.warning(
+                    f"⚠️ No active reservations found for order: {order_id}",
+                    extra={"correlationId": correlation_id}
+                )
+                return {"status": "not_found", "message": "No reservations found"}
+            
+            confirmed_count = 0
+            
+            for reservation in reservations:
+                reservation.status = 'confirmed'
+                reservation.confirmed_at = datetime.utcnow()
+                confirmed_count += 1
+            
+            db.session.commit()
+            
+            current_app.logger.info(
+                f"✅ Confirmed stock reservation for order: {order_id} ({confirmed_count} items)",
+                extra={"correlationId": correlation_id}
+            )
+            
+            return {
+                "status": "success",
+                "message": f"Reservation confirmed for order {order_id}",
+                "itemsConfirmed": confirmed_count
+            }
+            
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(
+                f"❌ Error handling payment.received: {str(e)}",
+                extra={"error": str(e), "correlationId": event_data.get('correlationid')}
+            )
+            return {"status": "error", "message": str(e)}
+    
+    @staticmethod
+    def handle_payment_failed(event_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handle payment.failed event from payment-service.
+        Release reserved stock (same as order cancelled).
+        """
+        try:
+            data = event_data.get('data', {})
+            order_id = data.get('orderId')
+            reason = data.get('reason', 'Payment failed')
+            correlation_id = event_data.get('correlationid')
+            
+            if not order_id:
+                raise ValueError("Missing orderId in event data")
+            
+            current_app.logger.info(
+                f"❌ Handling payment.failed for order: {order_id}",
+                extra={"correlationId": correlation_id, "reason": reason}
+            )
+            
+            # Find all reservations for this order
+            reservations = Reservation.query.filter_by(
+                order_id=order_id,
+                status='reserved'
+            ).all()
+            
+            if not reservations:
+                current_app.logger.warning(
+                    f"⚠️ No active reservations found for order: {order_id}",
+                    extra={"correlationId": correlation_id}
+                )
+                return {"status": "not_found", "message": "No reservations found"}
+            
+            released_count = 0
+            
+            for reservation in reservations:
+                inventory = InventoryItem.query.filter_by(
+                    product_id=reservation.product_id
+                ).with_for_update().first()
+                
+                if inventory:
+                    inventory.reserved_quantity = max(0, inventory.reserved_quantity - reservation.quantity)
+                    reservation.status = 'released'
+                    reservation.released_at = datetime.utcnow()
+                    
+                    event_publisher.publish_stock_released(
+                        product_id=reservation.product_id,
+                        quantity=reservation.quantity,
+                        reason=f"Payment failed: {reason}",
+                        correlation_id=correlation_id
+                    )
+                    
+                    released_count += 1
+            
+            db.session.commit()
+            
+            current_app.logger.info(
+                f"✅ Released reserved stock for order: {order_id} ({released_count} items)",
+                extra={"correlationId": correlation_id}
+            )
+            
+            return {
+                "status": "success",
+                "message": f"Stock released for order {order_id}",
+                "itemsReleased": released_count
+            }
+            
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(
+                f"❌ Error handling payment.failed: {str(e)}",
+                extra={"error": str(e), "correlationId": event_data.get('correlationid')}
+            )
+            return {"status": "error", "message": str(e)}
