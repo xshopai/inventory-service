@@ -25,6 +25,30 @@ logging.getLogger('azure.monitor.opentelemetry.exporter').setLevel(logging.WARNI
 logging.getLogger('opentelemetry').setLevel(logging.WARNING)
 logging.getLogger('urllib3').setLevel(logging.WARNING)
 
+# ============================================================================
+# CRITICAL: Instrument SQLAlchemy/PyMySQL BEFORE any database imports happen!
+# The instrumentation must happen before the SQLAlchemy engine is created.
+# ============================================================================
+try:
+    from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+    if not SQLAlchemyInstrumentor().is_instrumented_by_opentelemetry:
+        SQLAlchemyInstrumentor().instrument()
+        logger.info("SQLAlchemy instrumentation initialized EARLY (before database import)")
+except ImportError as e:
+    logger.warning(f"SQLAlchemy instrumentation package not available: {e}")
+except Exception as e:
+    logger.warning(f"Failed to initialize early SQLAlchemy instrumentation: {e}")
+
+try:
+    from opentelemetry.instrumentation.pymysql import PyMySQLInstrumentor
+    if not PyMySQLInstrumentor().is_instrumented_by_opentelemetry:
+        PyMySQLInstrumentor().instrument()
+        logger.info("PyMySQL instrumentation initialized EARLY (before database import)")
+except ImportError as e:
+    logger.warning(f"PyMySQL instrumentation package not available: {e}")
+except Exception as e:
+    logger.warning(f"Failed to initialize early PyMySQL instrumentation: {e}")
+
 # Configure Azure Monitor BEFORE importing Flask app
 # This must happen before any Flask/requests imports for proper instrumentation
 def setup_azure_monitor():
@@ -56,12 +80,17 @@ def setup_azure_monitor():
                 "azure_sdk": {"enabled": True},
                 "flask": {"enabled": True},
                 "requests": {"enabled": True},
+                "sqlalchemy": {"enabled": True},  # Track MySQL/SQLAlchemy calls
+                "pymysql": {"enabled": True},  # Track PyMySQL driver calls
                 "psycopg2": {"enabled": False},
                 "logging": {"enabled": True},
             },
             # Add sampling rate to ensure all traces are sent
             span_processors=[],  # Use default
         )
+        
+        # Note: SQLAlchemy and PyMySQL instrumentation is done EARLY at top of file
+        # before any database imports to ensure all connections are traced
         
         # Test that tracing is working by creating a test span
         from opentelemetry import trace
