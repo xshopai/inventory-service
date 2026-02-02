@@ -131,7 +131,7 @@ def test_publish():
     Request body (optional):
     {
         "topic": "inventory.test.event",
-        "product_id": "test-product-123",
+        "sku": "test-sku-123",
         "quantity": 100
     }
     """
@@ -141,14 +141,14 @@ def test_publish():
     try:
         data = request.get_json() or {}
         topic = data.get('topic', 'inventory.test.event')
-        product_id = data.get('product_id', 'test-product-123')
+        sku = data.get('sku', 'test-sku-123')
         quantity = data.get('quantity', 100)
         
-        logger.info(f"Test publish requested: topic={topic}, product_id={product_id}")
+        logger.info(f"Test publish requested: topic={topic}, sku={sku}")
         
         # Use the event publisher to publish a test event
         success = event_publisher.publish_stock_updated(
-            product_id=product_id,
+            sku=sku,
             quantity=quantity,
             warehouse="test-warehouse"
         )
@@ -158,7 +158,7 @@ def test_publish():
             'message': f"Published test event to topic: inventory.stock.updated",
             'data': {
                 'topic': 'inventory.stock.updated',
-                'product_id': product_id,
+                'sku': sku,
                 'quantity': quantity,
                 'warehouse': 'test-warehouse'
             },

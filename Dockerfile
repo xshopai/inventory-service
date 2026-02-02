@@ -95,7 +95,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 # Migrations are run automatically on startup before starting the server
 # FLASK_SKIP_AZURE_MONITOR=true prevents Azure Monitor from initializing during flask db upgrade
 # --preload ensures OpenTelemetry is initialized once before workers fork
-CMD sh -c "echo 'Running database migrations...' && FLASK_SKIP_AZURE_MONITOR=true flask db upgrade && echo 'Migrations complete. Starting server...' && gunicorn --bind 0.0.0.0:\${PORT:-8005} --workers 4 --timeout 120 --preload run:app"
+# set -e ensures the container fails if migrations fail (prevents silent failures)
+CMD sh -c "set -e && echo 'Running database migrations...' && FLASK_SKIP_AZURE_MONITOR=true flask db upgrade && echo 'Migrations complete. Starting server...' && exec gunicorn --bind 0.0.0.0:\${PORT:-8005} --workers 4 --timeout 120 --preload run:app"
 
 # Labels for better image management and security scanning
 LABEL maintainer="xshopai Team"

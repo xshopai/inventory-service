@@ -22,7 +22,6 @@ def upgrade():
         'inventory_items',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('sku', sa.String(length=100), nullable=False),
-        sa.Column('product_id', sa.String(length=36), nullable=False),
         sa.Column('quantity_available', sa.Integer(), nullable=False, server_default='0'),
         sa.Column('quantity_reserved', sa.Integer(), nullable=False, server_default='0'),
         sa.Column('reorder_level', sa.Integer(), nullable=False, server_default='10'),
@@ -37,7 +36,6 @@ def upgrade():
     
     # Create indexes for inventory_items
     op.create_index('ix_inventory_items_sku', 'inventory_items', ['sku'], unique=True)
-    op.create_index('ix_inventory_items_product_id', 'inventory_items', ['product_id'])
     
     # Create reservations table
     op.create_table(
@@ -96,7 +94,6 @@ def downgrade():
     op.drop_index('ix_reservations_order_id', table_name='reservations')
     op.drop_table('reservations')
     
-    op.drop_index('ix_inventory_items_product_id', table_name='inventory_items')
     op.drop_index('ix_inventory_items_sku', table_name='inventory_items')
     op.drop_table('inventory_items')
     

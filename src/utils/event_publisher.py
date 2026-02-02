@@ -99,24 +99,24 @@ class InventoryEventPublisher:
     # Inventory Stock Events
     # =========================================================================
     
-    def publish_stock_updated(self, product_id: str, quantity: int, 
+    def publish_stock_updated(self, sku: str, quantity: int, 
                              warehouse: str = "default",
                              correlation_id: Optional[str] = None) -> bool:
         """Publish inventory.stock.updated event"""
         data = {
-            "productId": product_id,
+            "sku": sku,
             "quantity": quantity,
             "warehouse": warehouse,
             "timestamp": datetime.utcnow().isoformat() + "Z"
         }
         return self.publish_event("inventory.stock.updated", data, correlation_id)
     
-    def publish_stock_reserved(self, product_id: str, quantity: int, 
+    def publish_stock_reserved(self, sku: str, quantity: int, 
                               order_id: str, reservation_id: str,
                               correlation_id: Optional[str] = None) -> bool:
         """Publish inventory.stock.reserved event"""
         data = {
-            "productId": product_id,
+            "sku": sku,
             "quantity": quantity,
             "orderId": order_id,
             "reservationId": reservation_id,
@@ -124,12 +124,12 @@ class InventoryEventPublisher:
         }
         return self.publish_event("inventory.stock.reserved", data, correlation_id)
     
-    def publish_stock_released(self, product_id: str, quantity: int,
+    def publish_stock_released(self, sku: str, quantity: int,
                               order_id: str, reason: str,
                               correlation_id: Optional[str] = None) -> bool:
         """Publish inventory.stock.released event"""
         data = {
-            "productId": product_id,
+            "sku": sku,
             "quantity": quantity,
             "orderId": order_id,
             "reason": reason,
@@ -137,11 +137,11 @@ class InventoryEventPublisher:
         }
         return self.publish_event("inventory.stock.released", data, correlation_id)
     
-    def publish_low_stock_alert(self, product_id: str, current_quantity: int,
+    def publish_low_stock_alert(self, sku: str, current_quantity: int,
                                threshold: int, correlation_id: Optional[str] = None) -> bool:
         """Publish inventory.low.stock event"""
         data = {
-            "productId": product_id,
+            "sku": sku,
             "currentQuantity": current_quantity,
             "threshold": threshold,
             "severity": "warning",
@@ -149,21 +149,21 @@ class InventoryEventPublisher:
         }
         return self.publish_event("inventory.low.stock", data, correlation_id)
     
-    def publish_out_of_stock_alert(self, product_id: str, 
+    def publish_out_of_stock_alert(self, sku: str, 
                                    correlation_id: Optional[str] = None) -> bool:
         """Publish inventory.out.of.stock event"""
         data = {
-            "productId": product_id,
+            "sku": sku,
             "severity": "critical",
             "timestamp": datetime.utcnow().isoformat() + "Z"
         }
         return self.publish_event("inventory.out.of.stock", data, correlation_id)
     
-    def publish_inventory_created(self, product_id: str, initial_quantity: int,
+    def publish_inventory_created(self, sku: str, initial_quantity: int,
                                  correlation_id: Optional[str] = None) -> bool:
         """Publish inventory.created event"""
         data = {
-            "productId": product_id,
+            "sku": sku,
             "initialQuantity": initial_quantity,
             "timestamp": datetime.utcnow().isoformat() + "Z"
         }

@@ -43,19 +43,21 @@ def get_inventory_models(api):
     """Define API models for inventory operations"""
     inventory_item_model = api.model('InventoryItem', {
         'id': fields.Integer(description='Inventory item ID'),
-        'product_id': fields.String(required=True, description='Product identifier'),
-        'quantity': fields.Integer(required=True, description='Total quantity'),
-        'reserved_quantity': fields.Integer(description='Reserved quantity'),
-        'available_quantity': fields.Integer(description='Available quantity'),
-        'minimum_stock_level': fields.Integer(description='Minimum stock level'),
-        'maximum_stock_level': fields.Integer(description='Maximum stock level'),
-        'location': fields.String(description='Storage location'),
+        'sku': fields.String(required=True, description='Stock Keeping Unit - unique product variant identifier'),
+        'quantity_available': fields.Integer(required=True, description='Available quantity'),
+        'quantity_reserved': fields.Integer(description='Reserved quantity'),
+        'total_quantity': fields.Integer(description='Total quantity (available + reserved)'),
+        'reorder_level': fields.Integer(description='Reorder threshold level'),
+        'max_stock': fields.Integer(description='Maximum stock level'),
+        'cost_per_unit': fields.Float(description='Cost per unit'),
+        'is_low_stock': fields.Boolean(description='Whether stock is below reorder level'),
+        'last_restocked': fields.DateTime(description='Last restock timestamp'),
         'created_at': fields.DateTime(description='Creation timestamp'),
         'updated_at': fields.DateTime(description='Last update timestamp')
     })
 
     stock_adjustment_model = api.model('StockAdjustment', {
-        'product_id': fields.String(required=True, description='Product identifier'),
+        'sku': fields.String(required=True, description='Stock Keeping Unit'),
         'quantity': fields.Integer(required=True, description='Adjustment quantity'),
         'movement_type': fields.String(required=True, description='Movement type'),
         'reference_id': fields.String(description='Reference identifier'),
@@ -163,7 +165,7 @@ class InventoryItem(Resource):
                 # Publish inventory.stock.updated event
                 correlation_id = getattr(g, 'correlation_id', None)
                 event_publisher.publish_stock_updated(
-                    product_id=item.sku,  # Using SKU as identifier
+                    sku=item.sku,
                     quantity=item.quantity_available,
                     correlation_id=correlation_id
                 )

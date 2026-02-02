@@ -5,8 +5,7 @@ from src.models import StockMovementType
 
 class InventoryItemRequestSchema(Schema):
     """Schema for creating/updating inventory items"""
-    sku = fields.Str(validate=validate.Length(min=1))
-    product_id = fields.Str(required=True, validate=validate.Length(min=1))
+    sku = fields.Str(required=True, validate=validate.Length(min=1))
     quantity_available = fields.Int(required=True, validate=validate.Range(min=0))
     quantity_reserved = fields.Int(validate=validate.Range(min=0), load_default=0)
     reorder_level = fields.Int(validate=validate.Range(min=0), load_default=10)
@@ -29,7 +28,6 @@ class InventoryItemResponseSchema(Schema):
     """Schema for inventory item responses"""
     id = fields.Int(dump_only=True)
     sku = fields.Str()
-    product_id = fields.Str()
     quantity_available = fields.Int()
     quantity_reserved = fields.Int()
     total_quantity = fields.Int(dump_only=True)
@@ -44,7 +42,7 @@ class InventoryItemResponseSchema(Schema):
 
 class ReservationRequestSchema(Schema):
     """Schema for creating reservations"""
-    product_id = fields.Str(required=True, validate=validate.Length(min=1))
+    sku = fields.Str(required=True, validate=validate.Length(min=1))
     quantity = fields.Int(required=True, validate=validate.Range(min=1))
     customer_id = fields.Str(required=True, validate=validate.Length(min=1))
     order_id = fields.Str(required=True, validate=validate.Length(min=1))
@@ -56,7 +54,7 @@ class ReservationResponseSchema(Schema):
     """Schema for reservation responses"""
     id = fields.Int(dump_only=True)
     inventory_item_id = fields.Int()
-    product_id = fields.Str()
+    sku = fields.Str()
     quantity = fields.Int()
     customer_id = fields.Str()
     order_id = fields.Str()
@@ -69,7 +67,7 @@ class ReservationResponseSchema(Schema):
 
 class StockAdjustmentRequestSchema(Schema):
     """Schema for stock adjustments"""
-    product_id = fields.Str(required=True, validate=validate.Length(min=1))
+    sku = fields.Str(required=True, validate=validate.Length(min=1))
     quantity = fields.Int(required=True)
     movement_type = fields.Str(
         required=True, 
@@ -83,7 +81,7 @@ class StockMovementResponseSchema(Schema):
     """Schema for stock movement responses"""
     id = fields.Int(dump_only=True)
     inventory_item_id = fields.Int()
-    product_id = fields.Str()
+    sku = fields.Str()
     movement_type = fields.Str()
     quantity = fields.Int()
     reference_id = fields.Str(allow_none=True)
@@ -101,7 +99,7 @@ class BulkOperationRequestSchema(Schema):
         if len(operations) > 100:
             raise ValidationError('Maximum 100 operations allowed per request')
         
-        required_fields = {'product_id', 'quantity'}
+        required_fields = {'sku', 'quantity'}
         for i, operation in enumerate(operations):
             if not isinstance(operation, dict):
                 raise ValidationError(f'Operation {i} must be a dictionary')
@@ -115,7 +113,7 @@ class BulkOperationRequestSchema(Schema):
 
 class InventorySearchSchema(Schema):
     """Schema for inventory search parameters"""
-    product_ids = fields.List(fields.Str(), validate=validate.Length(min=1))
+    skus = fields.List(fields.Str(), validate=validate.Length(min=1))
     location = fields.Str(validate=validate.Length(min=1))
     low_stock = fields.Bool()
     out_of_stock = fields.Bool()
@@ -126,7 +124,7 @@ class InventorySearchSchema(Schema):
     @post_load
     def validate_search_params(self, data, **kwargs):
         # Ensure at least one search criterion is provided
-        search_fields = ['product_ids', 'location', 'low_stock', 'out_of_stock', 'has_reservations']
+        search_fields = ['skus', 'location', 'low_stock', 'out_of_stock', 'has_reservations']
         if not any(data.get(field) for field in search_fields):
             raise ValidationError('At least one search criterion must be provided')
         

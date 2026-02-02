@@ -44,7 +44,7 @@ def get_reservation_models(api):
     """Define API models for reservation operations"""
     reservation_model = api.model('Reservation', {
         'id': fields.Integer(description='Reservation ID'),
-        'product_id': fields.String(required=True, description='Product identifier'),
+        'sku': fields.String(required=True, description='Stock Keeping Unit'),
         'quantity': fields.Integer(required=True, description='Reserved quantity'),
         'customer_id': fields.String(required=True, description='Customer identifier'),
         'order_id': fields.String(required=True, description='Order identifier'),
