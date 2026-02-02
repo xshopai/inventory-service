@@ -6,10 +6,10 @@ def get_database_uri():
     """
     Get database URI.
     
-    Uses xshopai-mysql-server-connection + DB_NAME (same env vars in local and ACA).
+    Uses MYSQL_SERVER_CONNECTION + DB_NAME env vars.
     Falls back to defaults for local development.
     """
-    # Try Dapr secrets / env vars (xshopai-mysql-server-connection + DB_NAME)
+    # Try Dapr secrets / env vars
     try:
         from src.utils.secret_manager import get_database_url
         return get_database_url()
@@ -20,25 +20,11 @@ def get_database_uri():
     return "mysql+pymysql://admin:admin123@localhost:3306/inventory_service_db"
 
 
-def get_flask_secret_key():
-    """
-    Get Flask SECRET_KEY - tries Dapr secrets first, then env vars.
-    """
-    try:
-        from src.utils.secret_manager import get_flask_secret_key
-        return get_flask_secret_key()
-    except Exception:
-        pass
-    
-    # Fallback to env var (hyphenated key - same as Key Vault)
-    return os.environ.get('xshopai-flask-secret') or 'dev-secret-key-change-in-production'
-
-
 class Config:
     """Base configuration"""
     
-    # Flask - loaded from Dapr secrets or env vars
-    SECRET_KEY = get_flask_secret_key()
+    # Flask SECRET_KEY - not used (stateless REST API, no sessions/CSRF)
+    SECRET_KEY = 'not-used-stateless-api'
     
     # Database - use lazy loading function instead of direct environment variables
     SQLALCHEMY_DATABASE_URI = None  # Will be set at runtime

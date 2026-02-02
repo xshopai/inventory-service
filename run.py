@@ -146,7 +146,7 @@ if azure_monitor_enabled:
 def main():
     """Main application entry point."""
     # Get environment
-    env = os.environ.get('FLASK_ENV', 'production')
+    env = os.environ.get('ENVIRONMENT', 'production')
     
     logger.info(f"Starting Inventory Service in {env} mode")
     

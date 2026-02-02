@@ -2,25 +2,19 @@
 Secret Manager Utility
 Manages secrets retrieval using Dapr Secret Store building block
 
-Naming Convention (same key names everywhere - Key Vault compatible):
-- xshopai-{type}                  : Platform-wide secrets
-- xshopai-{db}-server-connection  : Database server connections
-- svc-{service}-token             : Service identity tokens
-
-Same key names used in:
-- .env.local (local dev without Dapr)
-- .dapr/secrets.json (local dev with Dapr)
-- Azure Key Vault (production)
+Naming Convention:
+- Application code uses UPPER_SNAKE_CASE environment variables
+- Local dev (.env, .dapr/secrets.json) uses UPPER_SNAKE_CASE
+- Azure Key Vault uses lower-kebab-case (infra layer translates)
 
 Inventory Service Required Secrets:
-- xshopai-mysql-server-connection : MySQL server connection (db name appended at runtime)
-- xshopai-jwt-secret              : JWT signing secret
-- xshopai-flask-secret            : Flask session secret
-- xshopai-appinsights-connection  : Application Insights connection string
-- xshopai-svc-product-token       : Product service auth token
-- xshopai-svc-order-token         : Order service auth token
-- xshopai-svc-cart-token          : Cart service auth token
-- xshopai-svc-webbff-token        : Web BFF auth token
+- MYSQL_SERVER_CONNECTION   : MySQL server connection (db name appended at runtime)
+- JWT_SECRET                : JWT signing secret
+- APPINSIGHTS_CONNECTION    : Application Insights connection string
+- SERVICE_PRODUCT_TOKEN     : Product service auth token
+- SERVICE_ORDER_TOKEN       : Order service auth token
+- SERVICE_CART_TOKEN        : Cart service auth token
+- SERVICE_WEBBFF_TOKEN      : Web BFF auth token
 """
 import os
 import logging
@@ -28,16 +22,15 @@ from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
-# Secrets required by inventory-service (same names everywhere)
+# Secrets required by inventory-service (UPPER_SNAKE_CASE everywhere)
 REQUIRED_SECRETS = [
-    'xshopai-mysql-server-connection',
-    'xshopai-jwt-secret',
-    'xshopai-flask-secret',
-    'xshopai-appinsights-connection',
-    'xshopai-svc-product-token',
-    'xshopai-svc-order-token',
-    'xshopai-svc-cart-token',
-    'xshopai-svc-webbff-token',
+    'MYSQL_SERVER_CONNECTION',
+    'JWT_SECRET',
+    'APPINSIGHTS_CONNECTION',
+    'SERVICE_PRODUCT_TOKEN',
+    'SERVICE_ORDER_TOKEN',
+    'SERVICE_CART_TOKEN',
+    'SERVICE_WEBBFF_TOKEN',
 ]
 
 
@@ -66,10 +59,10 @@ class SecretManager:
     
     def get_secret(self, key: str) -> str:
         """
-        Get secret by key name. Same name used everywhere.
+        Get secret by key name (UPPER_SNAKE_CASE).
         
         Args:
-            key: Secret key (e.g., 'xshopai-jwt-secret')
+            key: Secret key (e.g., 'JWT_SECRET')
         
         Returns:
             Secret value
@@ -111,7 +104,7 @@ class SecretManager:
     
     def get_database_url(self, database_name: str = None) -> str:
         """Get database URL with database name appended."""
-        server_url = self.get_secret('xshopai-mysql-server-connection')
+        server_url = self.get_secret('MYSQL_SERVER_CONNECTION')
         db_name = database_name or os.environ.get('DB_NAME', 'inventory_service_db')
         
         if '?' in server_url:
@@ -122,47 +115,33 @@ class SecretManager:
     def get_jwt_config(self) -> Dict[str, Any]:
         """Get JWT configuration."""
         return {
-            'secret': self.get_secret('xshopai-jwt-secret'),
+            'secret': self.get_secret('JWT_SECRET'),
             'algorithm': os.environ.get('JWT_ALGORITHM', 'HS256'),
             'expiration': int(os.environ.get('JWT_EXPIRATION', '3600')),
             'issuer': os.environ.get('JWT_ISSUER', 'auth-service'),
             'audience': os.environ.get('JWT_AUDIENCE', 'xshopai-platform')
         }
     
-    def get_flask_secret_key(self) -> str:
-        """Get Flask SECRET_KEY."""
-        return self.get_secret('xshopai-flask-secret')
-    
     def get_service_tokens(self) -> Dict[str, str]:
         """
         Get service tokens for service-to-service auth.
         
-        Checks environment variables first (set during ACA deployment),
-        then falls back to Dapr secretstore. This avoids race conditions
-        with Dapr sidecar startup.
+        Uses UPPER_SNAKE_CASE keys - same in env vars, Dapr secrets.json,
+        and mapped from Key Vault at deployment time.
         """
         token_keys = {
-            'product-service': 'xshopai-svc-product-token',
-            'order-service': 'xshopai-svc-order-token',
-            'cart-service': 'xshopai-svc-cart-token',
-            'web-bff': 'xshopai-svc-webbff-token',
+            'product-service': 'SERVICE_PRODUCT_TOKEN',
+            'order-service': 'SERVICE_ORDER_TOKEN',
+            'cart-service': 'SERVICE_CART_TOKEN',
+            'web-bff': 'SERVICE_WEBBFF_TOKEN',
         }
         
         tokens = {}
         for service, key in token_keys.items():
-            # Check env var first (hyphenated key converted to underscore for env var)
-            env_key = key.replace('-', '_').upper()
-            env_value = os.environ.get(env_key)
-            if env_value:
-                tokens[service] = env_value
-                logger.debug(f"Token for '{service}' loaded from env var {env_key}")
-                continue
-            
-            # Fall back to Dapr secretstore
             try:
                 tokens[service] = self.get_secret(key)
             except RuntimeError:
-                logger.warning(f"Token for '{service}' not configured")
+                logger.warning(f"Token for '{service}' not configured (key: {key})")
         
         return tokens
     
@@ -173,8 +152,7 @@ class SecretManager:
         
         Checks in order:
         1. APPLICATIONINSIGHTS_CONNECTION_STRING env var (standard Azure SDK name)
-        2. Dapr secretstore: xshopai-appinsights-connection
-        3. xshopai-appinsights-connection env var (fallback)
+        2. APPINSIGHTS_CONNECTION via Dapr secretstore or env var
         """
         # Check standard Azure SDK env var first
         conn_string = os.environ.get('APPLICATIONINSIGHTS_CONNECTION_STRING')
@@ -182,9 +160,9 @@ class SecretManager:
             logger.debug("App Insights connection loaded from APPLICATIONINSIGHTS_CONNECTION_STRING env")
             return conn_string
         
-        # Fall back to Dapr secretstore / legacy env var
+        # Fall back to Dapr secretstore / env var
         try:
-            return self.get_secret('xshopai-appinsights-connection')
+            return self.get_secret('APPINSIGHTS_CONNECTION')
         except RuntimeError:
             logger.info("App Insights connection not configured - telemetry disabled")
             return None
@@ -206,9 +184,6 @@ def get_database_url() -> str:
 
 def get_jwt_config() -> Dict[str, Any]:
     return get_secret_manager().get_jwt_config()
-
-def get_flask_secret_key() -> str:
-    return get_secret_manager().get_flask_secret_key()
 
 def get_appinsights_connection_string() -> str:
     return get_secret_manager().get_appinsights_connection_string()

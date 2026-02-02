@@ -3,7 +3,7 @@
 # Azure Container Apps Deployment Script for Inventory Service
 # ============================================================================
 # PREREQUISITE: Run infrastructure deployment first:
-#   cd infrastructure/azure/aca/scripts && ./deploy-infra.sh
+#   cd infrastructure/azure/aca/scripts && ./deploy.sh
 # ============================================================================
 
 set -e
@@ -132,9 +132,7 @@ else
     print_success "Database created: $DB_NAME"
 fi
 
-# Note: Database credentials are NOT passed as env vars
-# The app reads secrets from Dapr secretstore (Azure Key Vault) at runtime
-print_success "Database configured (credentials via Dapr secretstore)"
+print_success "Database configured"
 
 # ============================================================================
 # NETWORK CONFIGURATION - Add Container Apps IP to MySQL Firewall
@@ -179,10 +177,6 @@ echo "CPU/Memory:         $CPU / $MEMORY"
 echo "Replicas:           $MIN_REPLICAS - $MAX_REPLICAS"
 echo ""
 
-read -p "Proceed with deployment? (Y/n): " CONFIRM
-CONFIRM=${CONFIRM:-Y}
-[[ "$CONFIRM" =~ ^[Nn]$ ]] && { print_warning "Cancelled"; exit 0; }
-
 # ============================================================================
 # BUILD & PUSH IMAGE
 # ============================================================================
@@ -204,45 +198,54 @@ print_header "Deploying Container App"
 
 ACR_PASSWORD=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv)
 
-# Map environment to Flask config name (dev->development, prod->production)
-FLASK_CONFIG="development"
-[ "$ENVIRONMENT" = "prod" ] && FLASK_CONFIG="production"
+# Map environment to app config (dev->development, prod->production)
+APP_CONFIG="development"
+[ "$ENVIRONMENT" = "prod" ] && APP_CONFIG="production"
 
-# Retrieve Application Insights connection string from Key Vault
-# This ensures Azure Monitor telemetry works even before Dapr sidecar is ready
-print_info "Retrieving Application Insights connection string from Key Vault..."
-APP_INSIGHTS_CONN=$(az keyvault secret show --vault-name "$KEY_VAULT" --name "xshopai-appinsights-connection" --query "value" -o tsv 2>/dev/null || echo "")
-[ -n "$APP_INSIGHTS_CONN" ] && print_success "Application Insights connection string retrieved" || print_warning "Application Insights not configured (telemetry disabled)"
+# Retrieve secrets from Key Vault
+# All secrets are fetched at deployment time and set as env vars
+# This avoids race conditions with Dapr sidecar startup
+print_info "Retrieving secrets from Key Vault..."
 
-# Retrieve service tokens from Key Vault
-# These are passed as env vars to avoid race conditions with Dapr sidecar startup
-print_info "Retrieving service tokens from Key Vault..."
-SVC_PRODUCT_TOKEN=$(az keyvault secret show --vault-name "$KEY_VAULT" --name "xshopai-svc-product-token" --query "value" -o tsv 2>/dev/null || echo "")
-SVC_ORDER_TOKEN=$(az keyvault secret show --vault-name "$KEY_VAULT" --name "xshopai-svc-order-token" --query "value" -o tsv 2>/dev/null || echo "")
-SVC_CART_TOKEN=$(az keyvault secret show --vault-name "$KEY_VAULT" --name "xshopai-svc-cart-token" --query "value" -o tsv 2>/dev/null || echo "")
-SVC_WEBBFF_TOKEN=$(az keyvault secret show --vault-name "$KEY_VAULT" --name "xshopai-svc-webbff-token" --query "value" -o tsv 2>/dev/null || echo "")
-print_success "Service tokens retrieved"
+# Application Insights
+APP_INSIGHTS_CONN=$(az keyvault secret show --vault-name "$KEY_VAULT" --name "appinsights-connection" --query "value" -o tsv 2>/dev/null || echo "")
+[ -n "$APP_INSIGHTS_CONN" ] && print_success "  appinsights-connection: retrieved" || print_warning "  appinsights-connection: not configured (telemetry disabled)"
 
-# Environment variables for the container
-# Secrets are read from Dapr secretstore (Key Vault) at runtime
-# Exception: App Insights connection string and service tokens are passed as env vars
-# to avoid race conditions with Dapr sidecar startup
+# JWT secret
+JWT_SECRET=$(az keyvault secret show --vault-name "$KEY_VAULT" --name "jwt-secret" --query "value" -o tsv 2>/dev/null || echo "")
+[ -n "$JWT_SECRET" ] && print_success "  jwt-secret: retrieved" || print_error "  jwt-secret: NOT FOUND"
+
+# MySQL connection
+MYSQL_SERVER_CONNECTION=$(az keyvault secret show --vault-name "$KEY_VAULT" --name "mysql-server-connection" --query "value" -o tsv 2>/dev/null || echo "")
+[ -n "$MYSQL_SERVER_CONNECTION" ] && print_success "  mysql-server-connection: retrieved" || print_error "  mysql-server-connection: NOT FOUND"
+
+# Service tokens
+SVC_CART_TOKEN=$(az keyvault secret show --vault-name "$KEY_VAULT" --name "service-cart-token" --query "value" -o tsv 2>/dev/null || echo "")
+SVC_ORDER_TOKEN=$(az keyvault secret show --vault-name "$KEY_VAULT" --name "service-order-token" --query "value" -o tsv 2>/dev/null || echo "")
+SVC_PRODUCT_TOKEN=$(az keyvault secret show --vault-name "$KEY_VAULT" --name "service-product-token" --query "value" -o tsv 2>/dev/null || echo "")
+SVC_WEBBFF_TOKEN=$(az keyvault secret show --vault-name "$KEY_VAULT" --name "service-webbff-token" --query "value" -o tsv 2>/dev/null || echo "")
+print_success "  service-*-token: retrieved"
+
+# Environment variables for the container (sorted alphabetically)
+# All secrets are set as env vars - no Dapr secretstore access needed at runtime
 ENV_VARS=(
-    "FLASK_ENV=$FLASK_CONFIG"
-    "MESSAGING_PROVIDER=dapr"
-    "DB_NAME=$DB_NAME"
-    "SERVICE_NAME=$SERVICE_NAME"
-    "PORT=$APP_PORT"
-    "OTEL_SERVICE_NAME=$SERVICE_NAME"
-    "OTEL_RESOURCE_ATTRIBUTES=service.version=1.0.0"
-    "OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true"
     "APPLICATIONINSIGHTS_CONNECTION_STRING=$APP_INSIGHTS_CONN"
-    "XSHOPAI_SVC_PRODUCT_TOKEN=$SVC_PRODUCT_TOKEN"
-    "XSHOPAI_SVC_ORDER_TOKEN=$SVC_ORDER_TOKEN"
-    "XSHOPAI_SVC_CART_TOKEN=$SVC_CART_TOKEN"
-    "XSHOPAI_SVC_WEBBFF_TOKEN=$SVC_WEBBFF_TOKEN"
-    "DAPR_HTTP_PORT=3500"
     "DAPR_GRPC_PORT=50001"
+    "DAPR_HTTP_PORT=3500"
+    "DB_NAME=$DB_NAME"
+    "ENVIRONMENT=$APP_CONFIG"
+    "JWT_SECRET=$JWT_SECRET"
+    "MESSAGING_PROVIDER=dapr"
+    "MYSQL_SERVER_CONNECTION=$MYSQL_SERVER_CONNECTION"
+    "OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true"
+    "OTEL_RESOURCE_ATTRIBUTES=service.version=1.0.0"
+    "OTEL_SERVICE_NAME=$SERVICE_NAME"
+    "PORT=$APP_PORT"
+    "SERVICE_CART_TOKEN=$SVC_CART_TOKEN"
+    "SERVICE_NAME=$SERVICE_NAME"
+    "SERVICE_ORDER_TOKEN=$SVC_ORDER_TOKEN"
+    "SERVICE_PRODUCT_TOKEN=$SVC_PRODUCT_TOKEN"
+    "SERVICE_WEBBFF_TOKEN=$SVC_WEBBFF_TOKEN"
 )
 
 if az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP" &>/dev/null; then
