@@ -16,14 +16,15 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Install system dependencies and Azure MySQL SSL certificate
+# Install system dependencies (wget for health checks)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    curl \
     wget \
     ca-certificates \
-    && wget --no-check-certificate https://dl.cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem -O /etc/ssl/certs/DigiCertGlobalRootG2.crt.pem \
     && rm -rf /var/lib/apt/lists/*
+
+# Download Azure MySQL SSL certificate (separate layer for better caching)
+RUN wget --no-check-certificate https://dl.cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem -O /etc/ssl/certs/DigiCertGlobalRootG2.crt.pem
 
 # Create non-root user
 RUN groupadd -r -g 1001 appgroup && \
@@ -95,8 +96,9 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 # Migrations are run automatically on startup before starting the server
 # FLASK_SKIP_AZURE_MONITOR=true prevents Azure Monitor from initializing during flask db upgrade
 # --preload ensures OpenTelemetry is initialized once before workers fork
+# --workers 2: Optimized for horizontal scaling (prefer multiple containers over workers)
 # set -e ensures the container fails if migrations fail (prevents silent failures)
-CMD sh -c "set -e && echo 'Running database migrations...' && FLASK_SKIP_AZURE_MONITOR=true flask db upgrade && echo 'Migrations complete. Starting server...' && exec gunicorn --bind 0.0.0.0:\${PORT:-8005} --workers 4 --timeout 120 --preload run:app"
+CMD sh -c "set -e && echo 'Running database migrations...' && FLASK_SKIP_AZURE_MONITOR=true flask db upgrade && echo 'Migrations complete. Starting server...' && exec gunicorn --bind 0.0.0.0:\${PORT:-8005} --workers 2 --timeout 120 --preload run:app"
 
 # Labels for better image management and security scanning
 LABEL maintainer="xshopai Team"
