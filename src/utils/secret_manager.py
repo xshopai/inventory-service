@@ -37,7 +37,10 @@ REQUIRED_SECRETS = [
 class SecretManager:
     """
     Unified secret manager - same key names everywhere.
-    Tries Dapr first, falls back to env vars.
+    
+    Priority:
+    1. Environment variables (Azure deployment - injected from Key Vault)
+    2. Dapr secret store (local development with .dapr/secrets.json)
     """
     
     def __init__(self):
@@ -61,6 +64,10 @@ class SecretManager:
         """
         Get secret by key name (UPPER_SNAKE_CASE).
         
+        Priority:
+        1. Environment variable (Azure deployment - injected from Key Vault)
+        2. Dapr Secret Store (local development with .dapr/secrets.json)
+        
         Args:
             key: Secret key (e.g., 'JWT_SECRET')
         
@@ -76,8 +83,13 @@ class SecretManager:
         
         value = None
         
-        # Try Dapr Secret Store first
-        if self.dapr_client:
+        # Try environment variable FIRST (Azure deployment)
+        value = os.environ.get(key)
+        if value:
+            logger.debug(f"Secret '{key}' loaded from env")
+        
+        # Fallback to Dapr Secret Store (local development)
+        if not value and self.dapr_client:
             try:
                 response = self.dapr_client.get_secret(
                     store_name=self.secret_store_name,
@@ -89,12 +101,6 @@ class SecretManager:
                         logger.debug(f"Secret '{key}' loaded from Dapr")
             except Exception as e:
                 logger.debug(f"Dapr lookup failed for '{key}': {e}")
-        
-        # Fallback to environment variable (same key name)
-        if not value:
-            value = os.environ.get(key)
-            if value:
-                logger.debug(f"Secret '{key}' loaded from env")
         
         if not value:
             raise RuntimeError(f"Secret '{key}' not found")
