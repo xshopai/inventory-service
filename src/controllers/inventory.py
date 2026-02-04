@@ -316,11 +316,18 @@ class StockBatchQuery(Resource):
                 in_stock_only = data.get('in_stock_only', False)
                 
                 inventory_service = InventoryService()
+                
+                # Use batch query to avoid N+1 pattern (single SQL query with IN clause)
+                inventory_items = inventory_service.inventory_repo.get_multiple_by_skus(skus)
+                
+                # Build lookup dict for O(1) access
+                inventory_by_sku = {item.sku: item for item in inventory_items}
+                
                 items = []
                 not_found = []
                 
                 for sku in skus:
-                    item = inventory_service.get_inventory_by_sku(sku)
+                    item = inventory_by_sku.get(sku)
                     if item:
                         is_in_stock = item.quantity_available > 0
                         if not in_stock_only or is_in_stock:
