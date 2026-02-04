@@ -39,8 +39,8 @@ class SecretManager:
     Unified secret manager - same key names everywhere.
     
     Priority:
-    1. Environment variables (Azure deployment - injected from Key Vault)
-    2. Dapr secret store (local development with .dapr/secrets.json)
+    1. Dapr secret store (local development with .dapr/secrets.json, Azure with Key Vault)
+    2. Environment variables (Azure deployment - injected from Key Vault as fallback)
     """
     
     def __init__(self):
@@ -83,13 +83,8 @@ class SecretManager:
         
         value = None
         
-        # Try environment variable FIRST (Azure deployment)
-        value = os.environ.get(key)
-        if value:
-            logger.debug(f"Secret '{key}' loaded from env")
-        
-        # Fallback to Dapr Secret Store (local development)
-        if not value and self.dapr_client:
+        # Try Dapr Secret Store FIRST (local development with .dapr/secrets.json)
+        if self.dapr_client:
             try:
                 response = self.dapr_client.get_secret(
                     store_name=self.secret_store_name,
@@ -101,6 +96,12 @@ class SecretManager:
                         logger.debug(f"Secret '{key}' loaded from Dapr")
             except Exception as e:
                 logger.debug(f"Dapr lookup failed for '{key}': {e}")
+        
+        # Fallback to environment variable (Azure deployment - injected from Key Vault)
+        if not value:
+            value = os.environ.get(key)
+            if value:
+                logger.debug(f"Secret '{key}' loaded from env")
         
         if not value:
             raise RuntimeError(f"Secret '{key}' not found")
