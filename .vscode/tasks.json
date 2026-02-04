@@ -2,29 +2,41 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "dapr-start-inventory",
+      "label": "db-start",
       "type": "shell",
-      "command": "dapr run --app-id inventory-service --app-port 8005 --dapr-http-port 3500 --dapr-grpc-port 50001 --log-level warn --config ./.dapr/config.yaml --resources-path ./.dapr/components",
-      "isBackground": true,
-      "problemMatcher": {
-        "pattern": [
-          {
-            "regexp": ".",
-            "file": 1,
-            "location": 2,
-            "message": 3
-          }
-        ],
-        "background": {
-          "activeOnStart": true,
-          "beginsPattern": "^.*Starting Dapr.*",
-          "endsPattern": "^.*You're up and running!.*"
-        }
-      },
+      "command": "docker compose -f docker-compose.db.yml up -d",
       "presentation": {
         "reveal": "always",
-        "panel": "dedicated"
-      }
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "db-stop",
+      "type": "shell",
+      "command": "docker compose -f docker-compose.db.yml down",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "db-reset",
+      "type": "shell",
+      "command": "docker compose -f docker-compose.db.yml down -v && docker compose -f docker-compose.db.yml up -d",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "dapr-start-inventory",
+      "type": "shell",
+      "command": "dapr run --app-id inventory-service --app-port 8005 --dapr-http-port 3500 --dapr-grpc-port 50001 --log-level info --config ./.dapr/config.yaml --resources-path ./.dapr/components",
+      "isBackground": true,
+      "problemMatcher": []
     },
     {
       "label": "dapr-stop-inventory",

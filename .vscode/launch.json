@@ -2,16 +2,31 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug",
+      "name": "Debug (Local)",
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/run.py",
       "console": "integratedTerminal",
       "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env.local",
       "env": {
         "FLASK_ENV": "development",
         "FLASK_DEBUG": "1",
-        "PORT": "1005",
+        "PORT": "8005"
+      }
+    },
+    {
+      "name": "Debug (with Dapr)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/run.py",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env.dapr",
+      "env": {
+        "FLASK_ENV": "development",
+        "FLASK_DEBUG": "1",
+        "PORT": "8005",
         "DAPR_HTTP_PORT": "3500",
         "DAPR_GRPC_PORT": "50001"
       },

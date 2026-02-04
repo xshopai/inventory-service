@@ -1,0 +1,44 @@
+# =============================================================================
+# Docker Compose for Inventory Service Database Only
+# =============================================================================
+# Use this for local development/debugging when running the service directly.
+#
+# Usage:
+#   docker compose -f docker-compose.db.yml up -d     # Start MySQL
+#   docker compose -f docker-compose.db.yml down      # Stop MySQL
+#   docker compose -f docker-compose.db.yml down -v   # Stop and remove data
+# =============================================================================
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: inventory-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: inventory_root_pass_123
+      MYSQL_DATABASE: inventory_service_db
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: admin123
+    volumes:
+      - inventory_mysql_data:/var/lib/mysql
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "admin",
+          "-padmin123",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  inventory_mysql_data:
+    name: inventory_mysql_data
