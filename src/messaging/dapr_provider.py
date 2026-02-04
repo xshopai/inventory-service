@@ -60,6 +60,7 @@ class DaprProvider(MessagingProvider):
             url = f"{self.dapr_base_url}/v1.0/publish/{self.pubsub_name}/{topic}"
             
             # Publish via HTTP POST
+            # Let Dapr handle CloudEvents wrapping/unwrapping natively
             response = requests.post(
                 url,
                 json=event_data,
