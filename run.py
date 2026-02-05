@@ -116,13 +116,76 @@ def setup_azure_monitor():
         logger.error(f"Failed to configure Application Insights: {e}", exc_info=True)
         return False
 
-# Only configure Azure Monitor when running as main module (gunicorn)
+
+def setup_zipkin_tracing():
+    """Configure Zipkin tracing if endpoint is available (fallback when Azure Monitor not configured)."""
+    try:
+        zipkin_endpoint = os.environ.get('ZIPKIN_ENDPOINT') or os.environ.get('OTEL_EXPORTER_ZIPKIN_ENDPOINT')
+        
+        if not zipkin_endpoint:
+            logger.warning("Zipkin not configured - endpoint not found")
+            return False
+        
+        service_name = os.environ.get('OTEL_SERVICE_NAME', os.environ.get('SERVICE_NAME', 'inventory-service'))
+        logger.info(f"Configuring Zipkin tracing with service name: {service_name}, endpoint: {zipkin_endpoint}")
+        
+        from opentelemetry import trace
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from opentelemetry.exporter.zipkin.json import ZipkinExporter
+        from opentelemetry.sdk.resources import Resource
+        
+        # Create resource with service name
+        resource = Resource.create({
+            "service.name": service_name,
+            "service.instance.id": os.environ.get('HOSTNAME', 'localhost'),
+        })
+        
+        # Set up tracer provider
+        provider = TracerProvider(resource=resource)
+        trace.set_tracer_provider(provider)
+        
+        # Configure Zipkin exporter
+        zipkin_exporter = ZipkinExporter(endpoint=zipkin_endpoint)
+        provider.add_span_processor(BatchSpanProcessor(zipkin_exporter))
+        
+        # Instrument Flask, Requests (will be done later when app is created)
+        from opentelemetry.instrumentation.requests import RequestsInstrumentor
+        RequestsInstrumentor().instrument()
+        
+        logger.info(f"Zipkin tracing configured successfully - endpoint: {zipkin_endpoint}")
+        return True
+        
+    except ImportError as e:
+        logger.error(f"Zipkin exporter not installed: {e}")
+        logger.info("Install with: pip install opentelemetry-exporter-zipkin-json")
+        return False
+    except Exception as e:
+        logger.error(f"Failed to configure Zipkin tracing: {e}", exc_info=True)
+        return False
+
+
+# Only configure tracing when running as main module (gunicorn)
 # Skip for flask CLI commands (flask db upgrade)
+# Only configure tracing when running as main module (gunicorn)
+# Skip for flask CLI commands (flask db upgrade)
+tracing_enabled = False
 if os.environ.get('FLASK_SKIP_AZURE_MONITOR') != 'true':
+    # Try Azure Monitor first (for production)
     azure_monitor_enabled = setup_azure_monitor()
-    logger.info(f"Azure Monitor setup complete: enabled={azure_monitor_enabled}")
+    if azure_monitor_enabled:
+        logger.info("Azure Monitor tracing enabled")
+        tracing_enabled = True
+    else:
+        # Fallback to Zipkin (for local development)
+        zipkin_enabled = setup_zipkin_tracing()
+        if zipkin_enabled:
+            logger.info("Zipkin tracing enabled")
+            tracing_enabled = True
+        else:
+            logger.warning("No tracing configured - neither Azure Monitor nor Zipkin available")
 else:
-    logger.info("Skipping Azure Monitor setup (FLASK_SKIP_AZURE_MONITOR=true)")
+    logger.info("Skipping all tracing setup (FLASK_SKIP_AZURE_MONITOR=true)")
     azure_monitor_enabled = False
 
 # Import application factory
@@ -134,7 +197,7 @@ env = os.environ.get('FLASK_ENV', 'production')
 app = create_app(env)
 
 # Explicitly instrument Flask AFTER app is created
-if azure_monitor_enabled:
+if tracing_enabled:
     try:
         from opentelemetry.instrumentation.flask import FlaskInstrumentor
         FlaskInstrumentor().instrument_app(app)

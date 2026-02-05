@@ -26,6 +26,10 @@ MANIFEST
 *.manifest
 *.spec
 
+# Environment files (use deployment scripts to inject env vars)
+.env
+.env.*
+
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
