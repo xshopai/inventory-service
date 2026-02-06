@@ -60,8 +60,9 @@ USER inventoryuser
 EXPOSE 8005
 
 # Health check (using Python to avoid curl dependency)
+# Uses /health/live for Docker HEALTHCHECK - simple liveness check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD python -c "import urllib.request; import os; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\", \"8005\")}/health/ready')" || exit 1
+    CMD python -c "import urllib.request; import os; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\", \"8005\")}/health/live')" || exit 1
 
 # Start development server with auto-reload
 CMD sh -c "flask run --host 0.0.0.0 --port ${PORT:-8005} --reload"

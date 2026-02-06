@@ -19,18 +19,6 @@ logger = logging.getLogger(__name__)
 operational_hp = Blueprint('operational', __name__)
 
 
-@operational_hp.route('/health', methods=['GET'])
-def health():
-    """Main health check endpoint"""
-    return jsonify({
-        'status': 'healthy',
-        'service': os.environ.get('NAME', 'inventory-service'),
-        'timestamp': datetime.utcnow().isoformat() + 'Z',
-        'version': os.environ.get('VERSION', '1.0.0'),
-        'environment': os.environ.get('FLASK_ENV', 'development'),
-    }), 200
-
-
 @operational_hp.route('/health/ready', methods=['GET'])
 def readiness():
     """Readiness probe - checks if service is ready to handle traffic"""
