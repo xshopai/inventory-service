@@ -51,10 +51,11 @@ RABBITMQ_EXCHANGE=inventory-events
 JWT_SECRET=8tDBDMcpxroHoHjXjk8xp/uAn8rzD4y8ZZremFkC4gI=
 
 # Service Tokens (for service-to-service communication)
-PRODUCT_SERVICE_TOKEN=svc-product-service-4ff5876fc86cc45a18d88e5d
-ORDER_SERVICE_TOKEN=svc-order-service-4ff5876fc86cc45a18d88e5d
-CART_SERVICE_TOKEN=svc-cart-service-4ff5876fc86cc45a18d88e5d
-WEB_BFF_TOKEN=svc-web-bff-4ff5876fc86cc45a18d88e5d
+# Pattern: SERVICE_{NAME}_TOKEN
+SERVICE_PRODUCT_TOKEN=svc-product-service-4ff5876fc86cc45a18d88e5d
+SERVICE_ORDER_TOKEN=svc-order-service-4ff5876fc86cc45a18d88e5d
+SERVICE_CART_TOKEN=svc-cart-service-4ff5876fc86cc45a18d88e5d
+SERVICE_WEBBFF_TOKEN=svc-web-bff-4ff5876fc86cc45a18d88e5d
 
 # Logging
 LOG_LEVEL=DEBUG

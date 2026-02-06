@@ -1605,14 +1605,15 @@ These values are retrieved from Dapr Secret Store when running with Dapr, or fro
 | `DATABASE_URL`          | MySQL connection string         | Yes      |
 | `JWT_SECRET`            | JWT validation secret           | Yes      |
 | `FLASK_SECRET_KEY`      | Flask session signing key       | Yes      |
-| `PRODUCT_SERVICE_TOKEN` | Token for Product Service calls | Yes      |
-| `ORDER_SERVICE_TOKEN`   | Token for Order Service calls   | Yes      |
-| `CART_SERVICE_TOKEN`    | Token for Cart Service calls    | Yes      |
-| `WEB_BFF_TOKEN`         | Token for Web BFF calls         | Yes      |
+| `SERVICE_PRODUCT_TOKEN` | Token for Product Service calls | Yes      |
+| `SERVICE_ORDER_TOKEN`   | Token for Order Service calls   | Yes      |
+| `SERVICE_CART_TOKEN`    | Token for Cart Service calls    | Yes      |
+| `SERVICE_WEBBFF_TOKEN`  | Token for Web BFF calls         | Yes      |
 
 > **Note:** The pubsub component name (`pubsub`) is hardcoded in the application code (`src/messaging/factory.py`), not configurable via environment variable.
 
 > **Token Format**: `svc-{service-name}-{random-24-chars}` where random is cryptographically secure.
+> **Pattern**: Environment variable names follow `SERVICE_{NAME}_TOKEN` format (e.g., `SERVICE_ORDER_TOKEN`).
 >
 > **Generation**: Use `openssl rand -hex 12` to generate the 24-character random suffix.
 >

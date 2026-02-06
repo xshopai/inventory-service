@@ -1,10 +1,10 @@
 """
 Secret Manager Utility
-Manages secrets retrieval using Dapr Secret Store building block
+Manages secrets retrieval from environment variables
 
 Naming Convention:
 - Application code uses UPPER_SNAKE_CASE environment variables
-- Local dev (.env, .dapr/secrets.json) uses UPPER_SNAKE_CASE
+- Local dev (.env) uses UPPER_SNAKE_CASE
 - Azure Key Vault uses lower-kebab-case (infra layer translates)
 
 Inventory Service Required Secrets:
@@ -36,44 +36,16 @@ REQUIRED_SECRETS = [
 
 class SecretManager:
     """
-    Unified secret manager - same key names everywhere.
-    
-    Priority:
-    1. Dapr secret store (local development with .dapr/secrets.json, Azure with Key Vault)
-    2. Environment variables (Azure deployment - injected from Key Vault as fallback)
+    Unified secret manager - uses environment variables.
     """
     
     def __init__(self):
-        self.secret_store_name = 'secretstore'
-        self._dapr_client = None
         self._cache: Dict[str, str] = {}
-    
-    @property
-    def dapr_client(self):
-        """Lazy load Dapr client"""
-        if self._dapr_client is None:
-            # Skip Dapr if using direct messaging (rabbitmq/servicebus)
-            messaging_provider = os.getenv('MESSAGING_PROVIDER', 'dapr').lower()
-            if messaging_provider != 'dapr':
-                logger.debug(f"Skipping Dapr client (using {messaging_provider})")
-                self._dapr_client = False
-                return None
-            
-            try:
-                from dapr.clients import DaprClient
-                self._dapr_client = DaprClient()
-            except Exception as e:
-                logger.debug(f"Dapr client not available: {e}")
-                self._dapr_client = False
-        return self._dapr_client if self._dapr_client else None
+        logger.info("Secret manager initialized (using environment variables)")
     
     def get_secret(self, key: str) -> str:
         """
         Get secret by key name (UPPER_SNAKE_CASE).
-        
-        Priority:
-        1. Environment variable (Azure deployment - injected from Key Vault)
-        2. Dapr Secret Store (local development with .dapr/secrets.json)
         
         Args:
             key: Secret key (e.g., 'JWT_SECRET')
@@ -88,33 +60,14 @@ class SecretManager:
         if key in self._cache:
             return self._cache[key]
         
-        value = None
+        # Get from environment variable
+        value = os.environ.get(key)
+        if value:
+            self._cache[key] = value
+            logger.debug(f"Secret '{key}' loaded from env")
+            return value
         
-        # Try Dapr Secret Store FIRST (local development with .dapr/secrets.json)
-        if self.dapr_client:
-            try:
-                response = self.dapr_client.get_secret(
-                    store_name=self.secret_store_name,
-                    key=key
-                )
-                if response and response.secret:
-                    value = response.secret.get(key)
-                    if value:
-                        logger.debug(f"Secret '{key}' loaded from Dapr")
-            except Exception as e:
-                logger.debug(f"Dapr lookup failed for '{key}': {e}")
-        
-        # Fallback to environment variable (Azure deployment - injected from Key Vault)
-        if not value:
-            value = os.environ.get(key)
-            if value:
-                logger.debug(f"Secret '{key}' loaded from env")
-        
-        if not value:
-            raise RuntimeError(f"Secret '{key}' not found")
-        
-        self._cache[key] = value
-        return value
+        raise RuntimeError(f"Secret '{key}' not found in environment variables")
     
     def get_database_url(self, database_name: str = None) -> str:
         """Get database URL with database name appended."""
@@ -139,9 +92,6 @@ class SecretManager:
     def get_service_tokens(self) -> Dict[str, str]:
         """
         Get service tokens for service-to-service auth.
-        
-        Uses UPPER_SNAKE_CASE keys - same in env vars, Dapr secrets.json,
-        and mapped from Key Vault at deployment time.
         """
         token_keys = {
             'product-service': 'SERVICE_PRODUCT_TOKEN',
@@ -152,9 +102,10 @@ class SecretManager:
         
         tokens = {}
         for service, key in token_keys.items():
-            try:
-                tokens[service] = self.get_secret(key)
-            except RuntimeError:
+            value = os.environ.get(key)
+            if value:
+                tokens[service] = value
+            else:
                 logger.warning(f"Token for '{service}' not configured (key: {key})")
         
         return tokens
@@ -163,10 +114,6 @@ class SecretManager:
         """
         Get Application Insights connection string.
         Returns None if not configured (telemetry will be disabled).
-        
-        Checks in order:
-        1. APPLICATIONINSIGHTS_CONNECTION_STRING env var (standard Azure SDK name)
-        2. APPINSIGHTS_CONNECTION via Dapr secretstore or env var
         """
         # Check standard Azure SDK env var first
         conn_string = os.environ.get('APPLICATIONINSIGHTS_CONNECTION_STRING')
@@ -174,12 +121,13 @@ class SecretManager:
             logger.debug("App Insights connection loaded from APPLICATIONINSIGHTS_CONNECTION_STRING env")
             return conn_string
         
-        # Fall back to Dapr secretstore / env var
-        try:
-            return self.get_secret('APPINSIGHTS_CONNECTION')
-        except RuntimeError:
-            logger.info("App Insights connection not configured - telemetry disabled")
-            return None
+        # Fall back to env var
+        conn_string = os.environ.get('APPINSIGHTS_CONNECTION')
+        if conn_string:
+            return conn_string
+        
+        logger.info("App Insights connection not configured - telemetry disabled")
+        return None
 
 
 # Singleton
