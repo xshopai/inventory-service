@@ -23,57 +23,108 @@ class InventoryEventsService:
     def handle_product_created(event_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Handle product.created event from product-service.
-        Initialize inventory record for the new product.
+        Initialize inventory records for all product variants (SKUs).
+        
+        Event payload structure:
+        {
+            "data": {
+                "productId": "prod-123",
+                "name": "iPhone 15",
+                "variants": [
+                    {"sku": "IP15-BLK-128", "color": "Black", "size": "128GB", "initial_stock": 50},
+                    {"sku": "IP15-WHT-128", "color": "White", "size": "128GB", "initial_stock": 30}
+                ]
+            }
+        }
         """
         try:
             data = event_data.get('data', {})
             product_id = data.get('productId')
-            correlation_id = event_data.get('correlationid')
+            product_name = data.get('name', 'Unknown Product')
+            variants = data.get('variants', [])
+            correlation_id = event_data.get('correlationid') or event_data.get('correlationId')
             
             if not product_id:
                 raise ValueError("Missing productId in event data")
             
-            current_app.logger.info(
-                f"📦 Handling product.created for product: {product_id}",
-                extra={"correlationId": correlation_id}
-            )
-            
-            # Check if inventory already exists
-            existing_inventory = InventoryItem.query.filter_by(product_id=product_id).first()
-            if existing_inventory:
+            if not variants:
                 current_app.logger.warning(
-                    f"⚠️ InventoryItem already exists for product: {product_id}",
-                    extra={"correlationId": correlation_id}
+                    f"⚠️ No variants found for product: {product_id}. Skipping inventory creation.",
+                    extra={"correlationId": correlation_id, "productId": product_id}
                 )
-                return {"status": "skipped", "message": "InventoryItem already exists"}
+                return {"status": "skipped", "message": "No variants to process"}
             
-            # Create new inventory record with zero initial stock
-            new_inventory = InventoryItem(
-                product_id=product_id,
-                quantity=0,
-                reserved_quantity=0,
-                warehouse="default",
-                low_stock_threshold=10
+            current_app.logger.info(
+                f"📦 Handling product.created for product: {product_id} ({product_name}) with {len(variants)} variants",
+                extra={"correlationId": correlation_id, "productId": product_id, "variantCount": len(variants)}
             )
             
-            db.session.add(new_inventory)
+            created_items = []
+            
+            # Create inventory record for each variant/SKU
+            for variant in variants:
+                sku = variant.get('sku')
+                initial_stock = variant.get('initial_stock', 0)
+                color = variant.get('color')
+                size = variant.get('size')
+                
+                if not sku:
+                    current_app.logger.warning(
+                        f"⚠️ Variant missing SKU, skipping",
+                        extra={"correlationId": correlation_id, "variant": variant}
+                    )
+                    continue
+                
+                # Check if inventory already exists for this SKU
+                existing_inventory = InventoryItem.query.filter_by(sku=sku).first()
+                if existing_inventory:
+                    current_app.logger.warning(
+                        f"⚠️ InventoryItem already exists for SKU: {sku}",
+                        extra={"correlationId": correlation_id, "sku": sku}
+                    )
+                    continue
+                
+                # Create new inventory record with initial stock
+                new_inventory = InventoryItem(
+                    sku=sku,
+                    quantity_available=initial_stock,
+                    quantity_reserved=0,
+                    reorder_level=10,
+                    max_stock=1000
+                )
+                
+                db.session.add(new_inventory)
+                created_items.append({
+                    "sku": sku,
+                    "initial_stock": initial_stock,
+                    "color": color,
+                    "size": size
+                })
+                
+                current_app.logger.info(
+                    f"✅ Created inventory for SKU: {sku} (initial stock: {initial_stock})",
+                    extra={"correlationId": correlation_id, "sku": sku, "initialStock": initial_stock}
+                )
+            
             db.session.commit()
             
-            current_app.logger.info(
-                f"✅ Created inventory for product: {product_id}",
-                extra={"correlationId": correlation_id}
-            )
+            # Publish inventory.created event for each SKU
+            for item in created_items:
+                event_publisher.publish_inventory_created(
+                    sku=item["sku"],
+                    initial_quantity=item["initial_stock"],
+                    correlation_id=correlation_id
+                )
             
-            # Publish inventory.created event
-            event_publisher.publish_inventory_created(
-                product_id=product_id,
-                initial_quantity=0,
-                correlation_id=correlation_id
+            current_app.logger.info(
+                f"✅ Created {len(created_items)} inventory records for product: {product_id}",
+                extra={"correlationId": correlation_id, "productId": product_id, "createdCount": len(created_items)}
             )
             
             return {
                 "status": "success",
-                "message": f"InventoryItem created for product {product_id}"
+                "message": f"Created {len(created_items)} inventory records for product {product_id}",
+                "created_skus": [item["sku"] for item in created_items]
             }
             
         except Exception as e:
@@ -89,43 +140,37 @@ class InventoryEventsService:
         """
         Handle product.updated event from product-service.
         Update product reference information in inventory.
+        Currently minimal processing - inventory tracks by SKU only.
         """
         try:
             data = event_data.get('data', {})
             product_id = data.get('productId')
-            correlation_id = event_data.get('correlationid')
+            variants = data.get('variants', [])
+            correlation_id = event_data.get('correlationid') or event_data.get('correlationId')
             
             if not product_id:
                 raise ValueError("Missing productId in event data")
             
             current_app.logger.info(
-                f"📝 Handling product.updated for product: {product_id}",
-                extra={"correlationId": correlation_id}
+                f"📝 Handling product.updated for product: {product_id} with {len(variants)} variants",
+                extra={"correlationId": correlation_id, "productId": product_id}
             )
             
-            # Find inventory record
-            inventory = InventoryItem.query.filter_by(product_id=product_id).first()
-            if not inventory:
-                current_app.logger.warning(
-                    f"⚠️ InventoryItem not found for product: {product_id}",
-                    extra={"correlationId": correlation_id}
-                )
-                return {"status": "not_found", "message": "InventoryItem not found"}
-            
-            db.session.commit()
+            # Inventory is SKU-based, not product-based
+            # No action needed unless variants changed (which would be handled separately)
+            # This event is mainly for audit/logging purposes
             
             current_app.logger.info(
-                f"✅ Updated inventory metadata for product: {product_id}",
+                f"✅ Acknowledged product.updated for product: {product_id}",
                 extra={"correlationId": correlation_id}
             )
             
             return {
                 "status": "success",
-                "message": f"InventoryItem updated for product {product_id}"
+                "message": f"Product update acknowledged for {product_id}"
             }
             
         except Exception as e:
-            db.session.rollback()
             current_app.logger.error(
                 f"❌ Error handling product.updated: {str(e)}",
                 extra={"error": str(e), "correlationId": event_data.get('correlationid')}
@@ -136,42 +181,61 @@ class InventoryEventsService:
     def handle_product_deleted(event_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Handle product.deleted event from product-service.
-        Archive inventory record.
+        Archive all inventory records for product's SKUs.
         """
         try:
             data = event_data.get('data', {})
             product_id = data.get('productId')
-            correlation_id = event_data.get('correlationid')
+            variants = data.get('variants', [])
+            correlation_id = event_data.get('correlationid') or event_data.get('correlationId')
             
             if not product_id:
                 raise ValueError("Missing productId in event data")
             
+            # Extract all SKUs from variants
+            skus = [v.get('sku') for v in variants if v.get('sku')]
+            
             current_app.logger.info(
-                f"🗑️ Handling product.deleted for product: {product_id}",
-                extra={"correlationId": correlation_id}
+                f"🗑️ Handling product.deleted for product: {product_id} with {len(skus)} SKUs to archive",
+                extra={"correlationId": correlation_id, "productId": product_id, "skus": skus}
             )
             
-            # Find inventory record
-            inventory = InventoryItem.query.filter_by(product_id=product_id).first()
-            if not inventory:
+            if not skus:
                 current_app.logger.warning(
-                    f"⚠️ InventoryItem not found for product: {product_id}",
+                    f"⚠️ No SKUs found in product.deleted event for product: {product_id}",
                     extra={"correlationId": correlation_id}
                 )
-                return {"status": "not_found", "message": "InventoryItem not found"}
+                return {"status": "skipped", "message": "No SKUs to archive"}
             
-            # Soft delete (preserve history)
-            inventory.is_active = False
+            archived_count = 0
+            
+            # Archive inventory for each SKU
+            for sku in skus:
+                inventory = InventoryItem.query.filter_by(sku=sku).first()
+                if inventory:
+                    inventory.is_active = False
+                    archived_count += 1
+                    current_app.logger.info(
+                        f"✅ Archived inventory for SKU: {sku}",
+                        extra={"correlationId": correlation_id, "sku": sku}
+                    )
+                else:
+                    current_app.logger.warning(
+                        f"⚠️ InventoryItem not found for SKU: {sku}",
+                        extra={"correlationId": correlation_id, "sku": sku}
+                    )
+            
             db.session.commit()
             
             current_app.logger.info(
-                f"✅ Archived inventory for deleted product: {product_id}",
-                extra={"correlationId": correlation_id}
+                f"✅ Archived {archived_count} inventory records for deleted product: {product_id}",
+                extra={"correlationId": correlation_id, "archivedCount": archived_count}
             )
             
             return {
                 "status": "success",
-                "message": f"InventoryItem archived for product {product_id}"
+                "message": f"Archived {archived_count} inventory records for product {product_id}",
+                "archived_skus": skus
             }
             
         except Exception as e:
