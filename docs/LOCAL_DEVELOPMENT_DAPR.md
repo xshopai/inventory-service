@@ -60,34 +60,6 @@ cp .env.dapr .env
 Copy-Item .env.dapr .env
 ```
 
-The `.env.dapr` file contains **only non-sensitive configuration**:
-
-```bash
-PORT=8005
-
-# Flask Configuration
-FLASK_ENV=development
-
-# Messaging Configuration - Dapr
-MESSAGING_PROVIDER=dapr
-DAPR_HTTP_PORT=3500
-
-# Logging
-LOG_LEVEL=DEBUG
-LOG_FORMAT=console
-LOG_TO_CONSOLE=true
-LOG_TO_FILE=false
-LOG_FILE_PATH=./logs/inventory-service.log
-```
-
-> **Note**:
->
-> - **Secrets are NOT in `.env.dapr`** - they are retrieved from the Dapr secret store (configured in `.dapr/secrets.json`)
-> - Secrets include: `DATABASE_URL`, `JWT_SECRET`, `FLASK_SECRET_KEY`, and service tokens
-> - The Dapr sidecar handles RabbitMQ connections using the pub/sub component in `.dapr/components/event-bus.yaml` (component name: `pubsub`)
-> - The pubsub component name (`pubsub`) is hardcoded in the application code
-> - If Dapr secret store fails, the service falls back to environment variables
-
 ---
 
 ## Step 3: Verify Dapr Component Files
@@ -103,37 +75,6 @@ ls -la .dapr/components/
 # - subscriptions.yaml (Event subscriptions)
 # - secret-store.yaml (Local secrets)
 ```
-
----
-
-## Step 4: Configure Dapr Secrets (Required)
-
-Create `.dapr/secrets.json` with all sensitive configuration:
-
-```json
-{
-  "DATABASE_URL": "mysql+pymysql://admin:admin123@localhost:3306/inventory_service_db",
-  "JWT_SECRET": "8tDBDMcpxroHoHjXjk8xp/uAn8rzD4y8ZZremFkC4gI=",
-  "FLASK_SECRET_KEY": "your-dev-secret-key-change-me",
-  "SERVICE_PRODUCT_TOKEN": "svc-product-service-4ff5876fc86cc45a18d88e5d",
-  "SERVICE_ORDER_TOKEN": "svc-order-service-4ff5876fc86cc45a18d88e5d",
-  "SERVICE_CART_TOKEN": "svc-cart-service-4ff5876fc86cc45a18d88e5d",
-  "SERVICE_WEBBFF_TOKEN": "svc-web-bff-4ff5876fc86cc45a18d88e5d"
-}
-```
-
-**Secret Keys Explained:**
-
-| Secret             | Purpose                                  |
-| ------------------ | ---------------------------------------- |
-| `DATABASE_URL`     | MySQL connection string                  |
-| `JWT_SECRET`       | JWT token validation key                 |
-| `FLASK_SECRET_KEY` | Flask session signing key                |
-| `*_SERVICE_TOKEN`  | Service-to-service authentication tokens |
-
-> **Note:** Use UPPER_SNAKE_CASE for secret names to match platform conventions.
-
-> **Security Note:** This file is gitignored. Never commit secrets.json to version control.
 
 ---
 
@@ -292,7 +233,7 @@ Subscribed events:
 | `product.created` | `/events/product-created` |
 | `product.updated` | `/events/product-updated` |
 | `product.deleted` | `/events/product-deleted` |
-| `order.created` | `/events/order-created` |
+| `order.created`   | `/events/order-created`   |
 | `order.cancelled` | `/events/order-cancelled` |
 | `order.completed` | `/events/order-completed` |
 

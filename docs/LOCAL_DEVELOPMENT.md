@@ -1,6 +1,6 @@
-# Local Development Guide (without Dapr)
+# Local Development Guide
 
-This guide covers running the Inventory Service locally without Dapr, using direct RabbitMQ connection for messaging.
+This guide covers running the Inventory Service locally using RabbitMQ connection for messaging.
 
 > **📋 Prerequisites**: Complete the [Prerequisites & Common Setup](PREREQUISITES.md) before following this guide.
 
@@ -29,48 +29,6 @@ cp .env.local .env
 # On Windows (PowerShell):
 Copy-Item .env.local .env
 ```
-
-The `.env.local` file contains:
-
-```bash
-PORT=8005
-
-# Flask Configuration
-FLASK_ENV=development
-SECRET_KEY=your-dev-secret-key-change-me
-
-# Database Configuration
-DATABASE_URL=mysql+pymysql://admin:admin123@localhost:3306/inventory_service_db
-
-# Messaging Configuration - Direct RabbitMQ (without Dapr)
-MESSAGING_PROVIDER=rabbitmq
-RABBITMQ_URL=amqp://guest:guest@localhost:5672/
-RABBITMQ_EXCHANGE=inventory-events
-
-# JWT Configuration (required for non-Dapr mode)
-JWT_SECRET=8tDBDMcpxroHoHjXjk8xp/uAn8rzD4y8ZZremFkC4gI=
-
-# Service Tokens (for service-to-service communication)
-# Pattern: SERVICE_{NAME}_TOKEN
-SERVICE_PRODUCT_TOKEN=svc-product-service-4ff5876fc86cc45a18d88e5d
-SERVICE_ORDER_TOKEN=svc-order-service-4ff5876fc86cc45a18d88e5d
-SERVICE_CART_TOKEN=svc-cart-service-4ff5876fc86cc45a18d88e5d
-SERVICE_WEBBFF_TOKEN=svc-web-bff-4ff5876fc86cc45a18d88e5d
-
-# Logging
-LOG_LEVEL=DEBUG
-LOG_FORMAT=console
-LOG_TO_CONSOLE=true
-LOG_TO_FILE=false
-LOG_FILE_PATH=./logs/inventory-service.log
-```
-
-> **Note**:
->
-> - `MESSAGING_PROVIDER=rabbitmq` uses direct RabbitMQ connection (no Dapr required)
-> - The code only uses `RABBITMQ_URL` and `RABBITMQ_EXCHANGE` (not individual host/port/user/password vars)
-> - `JWT_SECRET` is required for non-Dapr mode (in Dapr mode, it's retrieved from the Secret Store)
-> - Service tokens must match tokens configured in calling services
 
 ---
 
@@ -109,9 +67,6 @@ Expected output:
 ### Health Check
 
 ```bash
-# Basic health check
-curl http://localhost:8005/health
-
 # Readiness check (verifies database connection)
 curl http://localhost:8005/health/ready
 
@@ -134,41 +89,5 @@ pytest tests/test_inventory.py -v
 # Run specific test
 pytest tests/test_inventory.py::test_create_inventory_item -v
 ```
-
----
-
-## Common Tasks
-
-### View Logs
-
-Logs are output to console in development mode. Set `LOG_LEVEL=DEBUG` in `.env` for verbose logging.
-
-### Database Operations
-
-```bash
-# Create a new migration after model changes
-flask db migrate -m "description of change"
-
-# Apply migrations
-flask db upgrade
-
-# Rollback last migration
-flask db downgrade
-```
-
-### Reset Database
-
-```bash
-# Drop and recreate (WARNING: destroys all data)
-mysql -u admin -padmin123 -e "DROP DATABASE inventory_service_db; CREATE DATABASE inventory_service_db;"
-flask db upgrade
-```
-
----
-
-## Next Steps
-
-- For production-like local development with Dapr: [Local Development with Dapr](LOCAL_DEVELOPMENT_DAPR.md)
-- Review the [Architecture Documentation](ARCHITECTURE.md) for service design details
 
 ---
