@@ -3,5 +3,12 @@
         {
             "text": "Be extremely detailed with the files changes and the reason for the changes. Add lots of emoji to make it more engaging! 🚀✨",
         }
+    ],
+    "python-envs.pythonProjects": [
+        {
+            "path": "",
+            "envManager": "ms-python.python:venv",
+            "packageManager": "ms-python.python:pip"
+        }
     ]
 }

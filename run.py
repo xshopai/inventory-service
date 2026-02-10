@@ -106,10 +106,13 @@ def main():
     logger.info(f"Starting Inventory Service on {host}:{port}")
     
     # Run the application
+    # IMPORTANT: use_reloader=False is critical for VS Code debugger to work
+    # The reloader spawns a child process which the debugger doesn't attach to
     app.run(
         host=host,
         port=port,
         debug=debug,
+        use_reloader=False,  # Disable reloader for debugging
         threaded=True
     )
 

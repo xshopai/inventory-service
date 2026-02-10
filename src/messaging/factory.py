@@ -105,7 +105,7 @@ def _create_rabbitmq_provider(RabbitMQProvider):
     """
     # Get RabbitMQ configuration
     rabbitmq_url = os.getenv('RABBITMQ_URL')
-    exchange = os.getenv('RABBITMQ_EXCHANGE', 'inventory-events')  # Optional, has default
+    exchange = os.getenv('RABBITMQ_EXCHANGE', 'xshopai.events')  # Optional, has default
     
     # Validate required configuration
     if not rabbitmq_url:

@@ -49,7 +49,7 @@ Reference `docs/PRD.md` for business requirements when applicable.
 - [ ] Admin endpoints use `@require_admin` decorator
 - [ ] Service-to-service endpoints use `@require_service_token` decorator
 - [ ] Public endpoints (if any) explicitly documented
-- [ ] JWT config loaded via `src/utils/secret_manager.py`
+- [ ] JWT config loaded from environment variables (via `auth.py`)
 - [ ] User context stored in Flask `g` object (`g.user`, `g.correlation_id`)
 
 ---
@@ -94,7 +94,7 @@ Reference `docs/PRD.md` for business requirements when applicable.
 
 ## 7. Secrets Management
 
-- [ ] Secrets accessed via `src/utils/secret_manager.py`
+- [ ] Secrets accessed from environment variables (`os.environ.get`)
 - [ ] Uses Dapr Secret Store (with env var fallback)
 - [ ] Required secrets: `MYSQL_SERVER_CONNECTION`, `JWT_SECRET`, `APPINSIGHTS_CONNECTION`
 - [ ] Service tokens: `SERVICE_PRODUCT_TOKEN`, `SERVICE_ORDER_TOKEN`, etc.
@@ -202,7 +202,7 @@ Reference `docs/PRD.md` for business requirements when applicable.
 | Auth middleware     | `src/middlewares/auth.py`      |
 | Event publisher     | `src/utils/event_publisher.py` |
 | Messaging providers | `src/messaging/`               |
-| Secret manager      | `src/utils/secret_manager.py`  |
+| Configuration       | `config.py`                    |
 
 ### Common Imports
 

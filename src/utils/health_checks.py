@@ -53,13 +53,13 @@ def check_database_health():
         }
 
 
-    def check_redis_health():
-        """Redis disabled - returning unavailable status"""
-        return {
-            'status': 'unavailable',
-            'message': 'Redis disabled',
-            'latency_ms': None
-        }
+def check_redis_health():
+    """Redis disabled - returning unavailable status"""
+    return {
+        'status': 'unavailable',
+        'message': 'Redis disabled',
+        'latency_ms': None
+    }
 def check_external_service_health(service_name, service_url, timeout=5):
     """Check external service connectivity"""
     start_time = time.time()

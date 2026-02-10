@@ -4,17 +4,18 @@ from datetime import timedelta
 
 def get_database_uri():
     """
-    Get database URI.
-    
-    Uses MYSQL_SERVER_CONNECTION + DB_NAME env vars.
+    Get database URI from environment variables.
     Falls back to defaults for local development.
     """
-    # Try Dapr secrets / env vars
-    try:
-        from src.utils.secret_manager import get_database_url
-        return get_database_url()
-    except Exception:
-        pass
+    # Get connection string and database name from environment
+    server_connection = os.environ.get('MYSQL_SERVER_CONNECTION')
+    db_name = os.environ.get('DB_NAME', 'inventory_service_db')
+    
+    if server_connection:
+        # Append database name to connection string
+        if '?' in server_connection:
+            return f"{server_connection.split('?')[0]}/{db_name}?{server_connection.split('?')[1]}"
+        return f"{server_connection}/{db_name}"
     
     # Fallback: Defaults for local development
     return "mysql+pymysql://admin:admin123@localhost:3306/inventory_service_db"
@@ -23,8 +24,9 @@ def get_database_uri():
 class Config:
     """Base configuration"""
     
-    # Flask SECRET_KEY - not used (stateless REST API, no sessions/CSRF)
-    SECRET_KEY = 'not-used-stateless-api'
+    # Flask SECRET_KEY - Sessions disabled (stateless REST API)
+    # Set to None to make it explicit that sessions are not used
+    SECRET_KEY = os.environ.get('SECRET_KEY') if os.environ.get('ENABLE_SESSIONS') else None
     
     # Database - use lazy loading function instead of direct environment variables
     SQLALCHEMY_DATABASE_URI = None  # Will be set at runtime
@@ -34,14 +36,8 @@ class Config:
         'pool_recycle': 300,
     }
     
-    # Cache disabled - Redis removed
-    
     # Dapr service app IDs
     DAPR_PRODUCT_SERVICE_APP_ID = os.environ.get('DAPR_PRODUCT_SERVICE_APP_ID', 'product-service')
-    
-    # Pagination
-    DEFAULT_PAGE_SIZE = int(os.environ.get('DEFAULT_PAGE_SIZE', 20))
-    MAX_PAGE_SIZE = int(os.environ.get('MAX_PAGE_SIZE', 100))
     
     # Logging
     LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO')
@@ -56,16 +52,6 @@ class DevelopmentConfig(Config):
     LOG_LEVEL = 'DEBUG'
     # MySQL is the primary database for all environments
 
-class TestingConfig(Config):
-    """Testing configuration"""
-    TESTING = True
-    # Use in-memory SQLite for testing
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
-    # Use different Redis DB for testing
-    REDIS_DB = 1
-    WTF_CSRF_ENABLED = False
-
-
 class ProductionConfig(Config):
     """Production configuration"""
     DEBUG = False
@@ -74,8 +60,6 @@ class ProductionConfig(Config):
 
 config = {
     'development': DevelopmentConfig,
-    'testing': TestingConfig,
-    'test': TestingConfig,  # Alias for 'testing'
     'production': ProductionConfig,
     'default': DevelopmentConfig
 }

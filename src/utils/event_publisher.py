@@ -5,7 +5,7 @@ Uses Messaging Abstraction Layer per Architecture spec section 5.5
 import os
 from flask import current_app
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 # Import trace context for W3C Trace Context support
@@ -39,7 +39,7 @@ class InventoryEventPublisher:
             "type": event_type,
             "source": self.service_name,
             "id": str(uuid.uuid4()),
-            "time": datetime.utcnow().isoformat() + "Z",
+            "time": datetime.now(timezone.utc).isoformat(),
             "datacontenttype": "application/json",
             "data": data,
             "correlationId": correlation_id or str(uuid.uuid4())
@@ -74,7 +74,7 @@ class InventoryEventPublisher:
             
             if success:
                 current_app.logger.info(
-                    f"✅ Published event: {event_type}",
+                    f"Published event: {event_type}",
                     extra={
                         "eventType": event_type,
                         "correlationId": correlation_id,
@@ -86,7 +86,7 @@ class InventoryEventPublisher:
             
         except Exception as e:
             current_app.logger.error(
-                f"❌ Failed to publish event: {event_type} - {str(e)}",
+                f"Failed to publish event: {event_type} - {str(e)}",
                 extra={
                     "eventType": event_type,
                     "error": str(e),
@@ -107,7 +107,7 @@ class InventoryEventPublisher:
             "sku": sku,
             "quantity": quantity,
             "warehouse": warehouse,
-            "timestamp": datetime.utcnow().isoformat() + "Z"
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         return self.publish_event("inventory.stock.updated", data, correlation_id)
     
@@ -120,7 +120,7 @@ class InventoryEventPublisher:
             "quantity": quantity,
             "orderId": order_id,
             "reservationId": reservation_id,
-            "timestamp": datetime.utcnow().isoformat() + "Z"
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         return self.publish_event("inventory.stock.reserved", data, correlation_id)
     
@@ -133,7 +133,7 @@ class InventoryEventPublisher:
             "quantity": quantity,
             "orderId": order_id,
             "reason": reason,
-            "timestamp": datetime.utcnow().isoformat() + "Z"
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         return self.publish_event("inventory.stock.released", data, correlation_id)
     
@@ -145,7 +145,7 @@ class InventoryEventPublisher:
             "currentQuantity": current_quantity,
             "threshold": threshold,
             "severity": "warning",
-            "timestamp": datetime.utcnow().isoformat() + "Z"
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         return self.publish_event("inventory.low.stock", data, correlation_id)
     
@@ -155,7 +155,7 @@ class InventoryEventPublisher:
         data = {
             "sku": sku,
             "severity": "critical",
-            "timestamp": datetime.utcnow().isoformat() + "Z"
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         return self.publish_event("inventory.out.of.stock", data, correlation_id)
     
@@ -165,7 +165,7 @@ class InventoryEventPublisher:
         data = {
             "sku": sku,
             "initialQuantity": initial_quantity,
-            "timestamp": datetime.utcnow().isoformat() + "Z"
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         return self.publish_event("inventory.created", data, correlation_id)
 

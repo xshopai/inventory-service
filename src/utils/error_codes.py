@@ -1,7 +1,7 @@
 """
 Error codes and standardized error responses per Architecture spec 9.1
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import g
 
 
@@ -53,7 +53,7 @@ def create_error_response(code: str, message: str, details: dict = None, status_
         "error": {
             "code": code,
             "message": message,
-            "timestamp": datetime.utcnow().isoformat() + "Z"
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     }
     

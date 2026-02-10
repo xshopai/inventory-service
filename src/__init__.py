@@ -9,11 +9,10 @@ from src.models import db
 def configure_azure_monitor(app):
     """
     Configure Azure Monitor / Application Insights for distributed tracing.
-    Connection string is retrieved from Dapr secretstore (Key Vault).
+    Connection string from APPINSIGHTS_CONNECTION environment variable.
     """
     try:
-        from src.utils.secret_manager import get_appinsights_connection_string
-        connection_string = get_appinsights_connection_string()
+        connection_string = os.environ.get('APPINSIGHTS_CONNECTION')
         
         if not connection_string:
             app.logger.info("Application Insights not configured - telemetry disabled")

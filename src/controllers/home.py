@@ -13,7 +13,7 @@ home_bp = Blueprint('home', __name__)
 def info():
     """Service information endpoint"""
     return jsonify({
-        'service': os.environ.get('NAME', 'inventory-service'),
+        'service': os.environ.get('SERVICE_NAME', 'inventory-service'),
         'version': os.environ.get('VERSION', '1.0.0'),
         'description': 'Inventory management microservice for xshopai platform',
         'environment': os.environ.get('FLASK_ENV', 'development'),

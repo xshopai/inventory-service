@@ -9,37 +9,50 @@ import os
 from functools import wraps
 from flask import request, g
 import logging
-from src.utils.secret_manager import get_jwt_config, get_service_tokens
 
 logger = logging.getLogger(__name__)
 
-# JWT Configuration - loaded from Dapr Secret Store and environment
+# JWT Configuration cache
 _jwt_config = None
 
-# Service tokens for service-to-service authentication
+# Service tokens cache
 _service_tokens = None
 
 
 def _get_service_tokens():
     """
-    Get service token configuration from Dapr Secret Store or environment.
+    Get service token configuration from environment variables.
     Used for validating incoming requests from other services.
     """
     global _service_tokens
     if _service_tokens is None:
-        _service_tokens = get_service_tokens()
+        _service_tokens = {
+            'product-service': os.environ.get('SERVICE_PRODUCT_TOKEN', ''),
+            'order-service': os.environ.get('SERVICE_ORDER_TOKEN', ''),
+            'cart-service': os.environ.get('SERVICE_CART_TOKEN', ''),
+            'web-bff': os.environ.get('SERVICE_WEBBFF_TOKEN', ''),
+        }
     return _service_tokens
 
 
 def _get_jwt_config():
-    """Get JWT configuration from Dapr Secret Store and environment"""
+    """Get JWT configuration from environment variables"""
     global _jwt_config
     if _jwt_config is None:
         try:
-            _jwt_config = get_jwt_config()
-            logger.info('JWT configuration loaded from Dapr Secret Store and environment')
+            _jwt_config = {
+                'secret': os.environ.get('JWT_SECRET'),
+                'algorithm': os.environ.get('JWT_ALGORITHM', 'RS256'),
+                'issuer': os.environ.get('JWT_ISSUER', 'auth-service'),
+                'audience': os.environ.get('JWT_AUDIENCE', 'xshopai-platform'),
+            }
+            
+            if not _jwt_config['secret']:
+                raise RuntimeError('JWT_SECRET environment variable is required')
+            
+            logger.info('JWT configuration loaded from environment variables')
         except Exception as e:
-            logger.error(f'Failed to load JWT configuration from Dapr: {str(e)}')
+            logger.error(f'Failed to load JWT configuration: {str(e)}')
             raise RuntimeError('JWT configuration not available') from e
     return _jwt_config
 

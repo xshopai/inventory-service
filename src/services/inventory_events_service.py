@@ -258,7 +258,7 @@ class InventoryEventsService:
                     order_id=order_id,
                     quantity=quantity,
                     status='reserved',
-                    expires_at=datetime.utcnow() + timedelta(hours=24)
+                    expires_at=datetime.now(timezone.utc) + timedelta(hours=24)
                 )
                 
                 inventory.reserved_quantity += quantity
@@ -419,7 +419,7 @@ class InventoryEventsService:
                     inventory.reserved_quantity = max(0, inventory.reserved_quantity - reservation.quantity)
                     
                     reservation.status = 'completed'
-                    reservation.completed_at = datetime.utcnow()
+                    reservation.completed_at = datetime.now(timezone.utc)
                     
                     event_publisher.publish_stock_updated(
                         product_id=reservation.product_id,

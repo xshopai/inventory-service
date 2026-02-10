@@ -3,11 +3,12 @@
   "configurations": [
     {
       "name": "Debug (Local)",
-      "type": "debugpy",
+      "type": "python",
       "request": "launch",
       "program": "${workspaceFolder}/run.py",
       "console": "integratedTerminal",
       "justMyCode": false,
+      "python": "${workspaceFolder}/.venv/Scripts/python.exe",
       "envFile": "${workspaceFolder}/.env.local",
       "env": {
         "FLASK_ENV": "development",
@@ -17,11 +18,12 @@
     },
     {
       "name": "Debug (with Dapr)",
-      "type": "debugpy",
+      "type": "python",
       "request": "launch",
       "program": "${workspaceFolder}/run.py",
       "console": "integratedTerminal",
       "justMyCode": false,
+      "python": "${workspaceFolder}/.venv/Scripts/python.exe",
       "envFile": "${workspaceFolder}/.env.dapr",
       "env": {
         "FLASK_ENV": "development",

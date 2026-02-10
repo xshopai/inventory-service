@@ -96,7 +96,7 @@ cd inventory-service
 docker-compose up -d
 
 # Verify the service is healthy
-curl http://localhost:8004/health
+curl http://localhost:8005/health
 ```
 
 ### Local Development Setup
@@ -137,7 +137,7 @@ dapr init
 # Start with Dapr sidecar
 dapr run \
   --app-id inventory-service \
-  --app-port 8004 \
+  --app-port 8005 \
   --dapr-http-port 3500 \
   --resources-path .dapr/components \
   --config .dapr/config.yaml \
@@ -250,15 +250,15 @@ flask db upgrade                  # Apply migrations
 flask db migrate -m "message"     # Create migration
 
 # ⚡ Dapr Development
-dapr run --app-id inventory-service --app-port 8004 -- python run.py
+dapr run --app-id inventory-service --app-port 8005 -- python run.py
 
 # 🧪 Testing
 pytest tests/unit/ -v             # Run unit tests
 pytest --cov=src                  # Run with coverage
 
 # 🔍 Health Check
-curl http://localhost:8004/health
-curl http://localhost:8004/health/ready
+curl http://localhost:8005/health
+curl http://localhost:8005/health/ready
 ```
 
 ---

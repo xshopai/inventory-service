@@ -3,7 +3,7 @@ Inventory Service - Business logic for inventory management
 """
 
 from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 from uuid import uuid4
 
@@ -143,7 +143,7 @@ class InventoryService:
             response = {
                 'available': all_available,
                 'items': results,
-                'checked_at': datetime.utcnow().isoformat()
+                'checked_at': datetime.now(timezone.utc).isoformat()
             }
             
             return response
@@ -228,7 +228,7 @@ class InventoryService:
                 if hasattr(inventory_item, key) and key not in ['id', 'sku', 'created_at']:
                     setattr(inventory_item, key, value)
             
-            inventory_item.updated_at = datetime.utcnow()
+            inventory_item.updated_at = datetime.now(timezone.utc)
             updated_item = self.inventory_repo.update(inventory_item)
             
             self._clear_stock_caches()
@@ -348,7 +348,7 @@ class InventoryService:
                 'status': 'healthy',
                 'database': 'connected',
                 'redis': redis_status,
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
             
         except Exception as e:
@@ -356,7 +356,7 @@ class InventoryService:
             return {
                 'status': 'unhealthy',
                 'error': str(e),
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
     
     def _clear_stock_caches(self):
@@ -656,7 +656,7 @@ class InventoryService:
             
             return {
                 'processed_count': processed_count,
-                'processed_at': datetime.utcnow().isoformat()
+                'processed_at': datetime.now(timezone.utc).isoformat()
             }
             
         except Exception as e:
@@ -667,7 +667,7 @@ class InventoryService:
         """Cleanup old expired reservations (background task)"""
         try:
             # Delete reservations expired more than 24 hours ago
-            cutoff_time = datetime.utcnow() - timedelta(hours=24)
+            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=24)
             count = self.reservation_repo.delete_expired(cutoff_time)
             
             if count > 0:
@@ -844,7 +844,7 @@ class InventoryService:
                 'total_processed': len(reservation_ids),
                 'successful': len([r for r in results if r['success']]),
                 'failed': len([r for r in results if not r['success']]),
-                'expired_at': datetime.utcnow().isoformat()
+                'expired_at': datetime.now(timezone.utc).isoformat()
             }
             
         except Exception as e:
