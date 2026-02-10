@@ -71,6 +71,7 @@ Reference `docs/PRD.md` for business requirements when applicable.
 - [ ] Events published via `src/utils/event_publisher.py`
 - [ ] Uses `DaprProvider` from `src/messaging/dapr_provider.py`
 - [ ] Events follow CloudEvents format:
+
   ```python
   {
       "specversion": "1.0",
@@ -81,6 +82,7 @@ Reference `docs/PRD.md` for business requirements when applicable.
       "data": { ... }
   }
   ```
+  
 - [ ] `correlation_id` propagated in event metadata
 - [ ] Fire-and-forget pattern (log errors, don't fail API request)
 - [ ] Event topics match PRD requirements:

@@ -84,6 +84,20 @@ class ReservationList(Resource):
                     sku = data.get('sku', 'unknown')
                     return insufficient_stock_error(sku, data.get('quantity', 0), 0)
                 
+                # Publish inventory.stock.updated event (PRD 4.11)
+                from src.utils.event_publisher import event_publisher
+                from flask import g
+                correlation_id = getattr(g, 'correlation_id', None)
+                
+                # Get updated inventory to publish correct quantity
+                inventory = inventory_service.get_inventory_by_sku(reservation['sku'])
+                if inventory:
+                    event_publisher.publish_stock_updated(
+                        sku=reservation['sku'],
+                        quantity=inventory['quantity_available'],
+                        correlation_id=correlation_id
+                    )
+                
                 result = reservation_response_schema.dump(reservation)
                 return result, 201
                 
@@ -148,10 +162,30 @@ class ReservationConfirmSingle(Resource):
                     return validation_error("order_id is required in request body")
                 
                 inventory_service = InventoryService()
+                
+                # Get reservation before confirming to get SKU
+                reservation = inventory_service.get_reservation(reservation_id)
+                if not reservation:
+                    return reservation_not_found_error(reservation_id)
+                
                 success = inventory_service.confirm_reservation(reservation_id, order_id)
                 
                 if not success:
                     return reservation_not_found_error(reservation_id)
+                
+                # Publish inventory.stock.updated event (PRD 4.11)
+                from src.utils.event_publisher import event_publisher
+                from flask import g
+                correlation_id = getattr(g, 'correlation_id', None)
+                
+                # Get updated inventory
+                inventory = inventory_service.get_inventory_by_sku(reservation['sku'])
+                if inventory:
+                    event_publisher.publish_stock_updated(
+                        sku=reservation['sku'],
+                        quantity=inventory['quantity_available'],
+                        correlation_id=correlation_id
+                    )
                 
                 return {'message': 'Reservation confirmed successfully', 'reservation_id': reservation_id}, 200
                 
@@ -173,6 +207,20 @@ class ReservationRelease(Resource):
                 
                 if not reservation:
                     return reservation_not_found_error(reservation_id)
+                
+                # Publish inventory.stock.updated event (PRD 4.11)
+                from src.utils.event_publisher import event_publisher
+                from flask import g
+                correlation_id = getattr(g, 'correlation_id', None)
+                
+                # Get updated inventory
+                inventory = inventory_service.get_inventory_by_sku(reservation['sku'])
+                if inventory:
+                    event_publisher.publish_stock_updated(
+                        sku=reservation['sku'],
+                        quantity=inventory['quantity_available'],
+                        correlation_id=correlation_id
+                    )
                 
                 return {
                     'message': 'Reservation released successfully',

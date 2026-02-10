@@ -6,8 +6,7 @@
 2. [Scope](#2-scope)
 3. [User Stories](#3-user-stories)
 4. [Functional Requirements](#4-functional-requirements)
-5. [Traceability Matrix](#5-traceability-matrix)
-6. [Non-Functional Requirements](#6-non-functional-requirements)
+5. [Non-Functional Requirements](#5-non-functional-requirements)
 
 ---
 
@@ -26,16 +25,7 @@ The Inventory Service is a core microservice within the xshopai e-commerce platf
 | **Support Order Fulfillment** | Enable Order Service to reserve and confirm inventory during checkout              |
 | **Enable Stock Management**   | Allow administrators to view and adjust inventory levels                           |
 
-### 1.3 Success Metrics
-
-| Metric                   | Target  | Description                                           |
-| ------------------------ | ------- | ----------------------------------------------------- |
-| Oversell Rate            | < 0.1%  | Percentage of orders that exceed available stock      |
-| API Response Time (p95)  | < 100ms | 95th percentile response time for stock queries       |
-| Reservation Success Rate | > 99.5% | Percentage of valid reservation requests that succeed |
-| Service Availability     | 99.9%   | Uptime during business hours                          |
-
-### 1.4 Target Users
+### 1.3 Target Users
 
 | User                | Interaction                                                                                 |
 | ------------------- | ------------------------------------------------------------------------------------------- |
@@ -548,43 +538,9 @@ The system shall publish `inventory.stock.updated` event after admin create, upd
 
 ---
 
-## 5. Traceability Matrix
+## 5. Non-Functional Requirements
 
-> **Purpose:** This matrix provides a single snapshot view linking User Stories to their implementing requirements. Use this to verify coverage and track implementation status.
-
-| User Story                             | Story Title                 | Requirements                                                                                                                                                                                                                                                                                                 |
-| -------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [3.1](#31-query-stock-availability)    | Query Stock Availability    | [4.1](#41-query-stock-for-single-sku), [4.2](#42-query-stock-for-multiple-skus), [4.3](#43-handle-unknown-sku-in-query), [4.4](#44-filter-in-stock-items)                                                                                                                                                    |
-| [3.2](#32-reserve-inventory-for-order) | Reserve Inventory for Order | [4.5](#45-create-inventory-reservation), [4.6](#46-decrement-stock-on-reservation), [4.7](#47-reject-insufficient-stock-reservation), [4.8](#48-confirm-reservation), [4.9](#49-release-reservation), [4.10](#410-associate-reservation-with-order), [4.11](#411-publish-stock-updated-event-on-reservation) |
-| [3.3](#33-manage-inventory-records)    | Manage Inventory Records    | [4.12](#412-list-inventory-records), [4.13](#413-create-inventory-record), [4.14](#414-get-inventory-record-by-sku), [4.15](#415-update-inventory-quantity), [4.16](#416-delete-inventory-record), [4.17](#417-prevent-duplicate-sku-creation), [4.18](#418-publish-stock-updated-event-on-admin-operations) |
-
-**Coverage Summary:**
-
-- Total User Stories: 3
-- Total Requirements: 18
-- Requirements without User Story: 0
-- User Stories without Requirements: 0
-
----
-
-## 6. Non-Functional Requirements
-
-### 6.1 Performance
-
-| Metric                  | Target    | Description                              |
-| ----------------------- | --------- | ---------------------------------------- |
-| API Response Time (p95) | < 100ms   | Stock queries and reservation operations |
-| Throughput              | 500 req/s | Sustained load during normal operations  |
-
-### 6.2 Reliability
-
-| Metric                   | Target  | Description                               |
-| ------------------------ | ------- | ----------------------------------------- |
-| Service Availability     | 99.9%   | Uptime during business hours              |
-| Reservation Success Rate | > 99.5% | Valid requests that complete successfully |
-| Oversell Rate            | < 0.1%  | Orders exceeding available stock          |
-
-### 6.3 Security
+### 5.1 Security
 
 | Requirement                                 | Priority |
 | ------------------------------------------- | -------- |
@@ -592,7 +548,7 @@ The system shall publish `inventory.stock.updated` event after admin create, upd
 | Input validation on all endpoints           | Critical |
 | No sensitive data in logs                   | High     |
 
-### 6.4 Observability
+### 5.2 Observability
 
 | Requirement                                                         | Priority |
 | ------------------------------------------------------------------- | -------- |

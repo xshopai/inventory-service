@@ -162,6 +162,61 @@ class AdminInventoryList(Resource):
 
 @admin_inventory_ns.route('/<string:identifier>')
 class AdminInventoryItem(Resource):
+    @admin_api.doc('get_inventory')
+    @require_admin
+    def get(self, identifier):
+        """Get inventory item by SKU (Admin only)
+        
+        GET /api/admin/inventory/<identifier>
+        """
+        try:
+            inventory_service = InventoryService()
+            item = inventory_service.get_inventory_by_sku(identifier)
+            
+            if not item:
+                return sku_not_found_error(identifier)
+            
+            result = inventory_response_schema.dump(item)
+            return result, 200
+            
+        except Exception as e:
+            logger.error(f"Error getting inventory: {e}")
+            return create_error_response(ErrorCode.INTERNAL_ERROR, "Internal server error", status_code=500)
+    
+    @admin_api.doc('update_inventory')
+    @admin_api.expect(inventory_item_model)
+    @require_admin
+    def put(self, identifier):
+        """Update inventory item (Admin only) - PRD 4.15
+        
+        PUT /api/admin/inventory/<identifier>
+        """
+        try:
+            # Validate request data
+            data = inventory_request_schema.load(request.json)
+            
+            inventory_service = InventoryService()
+            item = inventory_service.update_inventory_item(identifier, **data)
+            
+            # Publish inventory.stock.updated event (PRD 4.18)
+            correlation_id = getattr(g, 'correlation_id', None)
+            event_publisher.publish_stock_updated(
+                sku=item['sku'],
+                quantity=item['quantity_available'],
+                correlation_id=correlation_id
+            )
+            
+            result = inventory_response_schema.dump(item)
+            return result, 200
+            
+        except ValidationError as e:
+            return {'error': 'Validation failed', 'details': e.messages}, 400
+        except ValueError as e:
+            return {'error': str(e)}, 404
+        except Exception as e:
+            logger.error(f"Error updating inventory: {e}")
+            return create_error_response(ErrorCode.INTERNAL_ERROR, "Internal server error", status_code=500)
+    
     @admin_api.doc('delete_inventory')
     @require_admin
     def delete(self, identifier):
@@ -171,10 +226,23 @@ class AdminInventoryItem(Resource):
         """
         try:
             inventory_service = InventoryService()
+            
+            # Get item before deleting for event publishing
+            item = inventory_service.get_inventory_by_sku(identifier)
+            
             success = inventory_service.delete_inventory_item(identifier)
             
             if not success:
                 return sku_not_found_error(identifier)
+            
+            # Publish inventory.stock.updated event (PRD 4.18)
+            if item:
+                correlation_id = getattr(g, 'correlation_id', None)
+                event_publisher.publish_stock_updated(
+                    sku=identifier,
+                    quantity=0,  # Deleted items have 0 available
+                    correlation_id=correlation_id
+                )
             
             # Return 204 No Content as per PRD
             return '', 204
