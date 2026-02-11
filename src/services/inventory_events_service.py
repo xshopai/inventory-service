@@ -668,3 +668,246 @@ class InventoryEventsService:
                 extra={"error": str(e), "correlationId": event_data.get('correlationid')}
             )
             return {"status": "error", "message": str(e)}
+    
+    @staticmethod
+    def handle_inventory_release(event_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handle inventory.release compensation event from order-processor-service.
+        
+        This is a CRITICAL saga compensation transaction that prevents inventory leaks.
+        Triggered when order saga fails and needs rollback after inventory was reserved.
+        
+        Scenarios:
+        - Payment fails after inventory reserved → Release inventory back to available pool
+        - Shipping fails after inventory reserved → Release inventory
+        - Order cancelled by admin/user → Release inventory
+        
+        Event payload structure:
+        {
+            "data": {
+                "orderId": "order-123",
+                "reservationId": "res-456"  // Optional - specific reservation to release
+            }
+        }
+        """
+        try:
+            data = event_data.get('data', {})
+            order_id = data.get('orderId')
+            reservation_id = data.get('reservationId')
+            correlation_id = event_data.get('correlationid') or event_data.get('correlationId')
+            
+            if not order_id:
+                raise ValueError("Missing orderId in compensation event data")
+            
+            current_app.logger.info(
+                f"🔄 SAGA COMPENSATION: Handling inventory.release for order: {order_id}",
+                extra={"correlationId": correlation_id, "orderId": order_id, "reservationId": reservation_id}
+            )
+            
+            # Find reservations to release
+            if reservation_id:
+                # Release specific reservation
+                reservations = Reservation.query.filter_by(
+                    id=reservation_id,
+                    status='reserved'
+                ).all()
+            else:
+                # Release all active reservations for this order
+                reservations = Reservation.query.filter_by(
+                    order_id=order_id,
+                    status='reserved'
+                ).all()
+            
+            if not reservations:
+                current_app.logger.warning(
+                    f"⚠️ SAGA COMPENSATION: No active reservations found for order: {order_id}",
+                    extra={"correlationId": correlation_id, "orderId": order_id}
+                )
+                # Return success even if no reservations - idempotent operation
+                return {"status": "success", "message": "No active reservations to release"}
+            
+            released_count = 0
+            total_quantity_released = 0
+            
+            for reservation in reservations:
+                # Lock inventory row for update (prevent race conditions)
+                inventory = InventoryItem.query.filter_by(
+                    product_id=reservation.product_id
+                ).with_for_update().first()
+                
+                if inventory:
+                    # Return reserved quantity back to available pool
+                    inventory.reserved_quantity = max(0, inventory.reserved_quantity - reservation.quantity)
+                    
+                    # Mark reservation as released (compensation completed)
+                    reservation.status = 'released'
+                    reservation.released_at = datetime.utcnow()
+                    reservation.release_reason = 'SAGA_COMPENSATION'
+                    
+                    # Publish stock.released event for audit/analytics
+                    event_publisher.publish_stock_released(
+                        product_id=reservation.product_id,
+                        quantity=reservation.quantity,
+                        reason=f"Saga compensation for order {order_id}",
+                        correlation_id=correlation_id
+                    )
+                    
+                    released_count += 1
+                    total_quantity_released += reservation.quantity
+                    
+                    current_app.logger.debug(
+                        f"✅ Released reservation: product={reservation.product_id}, qty={reservation.quantity}",
+                        extra={"correlationId": correlation_id, "productId": reservation.product_id}
+                    )
+            
+            # Commit all changes atomically
+            db.session.commit()
+            
+            current_app.logger.info(
+                f"✅ SAGA COMPENSATION COMPLETE: Released inventory for order: {order_id} "
+                f"({released_count} reservations, {total_quantity_released} total units)",
+                extra={
+                    "correlationId": correlation_id,
+                    "orderId": order_id,
+                    "reservationsReleased": released_count,
+                    "totalQuantity": total_quantity_released
+                }
+            )
+            
+            return {
+                "status": "success",
+                "message": f"Compensation completed: Released stock for order {order_id}",
+                "reservationsReleased": released_count,
+                "totalQuantityReleased": total_quantity_released
+            }
+            
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(
+                f"❌ SAGA COMPENSATION FAILED: Error handling inventory.release: {str(e)}",
+                extra={"error": str(e), "correlationId": event_data.get('correlationid'), "orderId": data.get('orderId')}
+            )
+            # Return error to trigger RETRY - compensation must succeed
+            return {"status": "error", "message": str(e)}
+
+    # ============================================================================
+    # Return Events
+    # ============================================================================
+    
+    @staticmethod
+    def handle_inventory_return_release(event_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handle inventory.return.release event from order-processor-service.
+        Add returned items back to available stock.
+        
+        Event payload structure:
+        {
+            "data": {
+                "returnId": "uuid",
+                "orderId": "uuid",
+                "returnNumber": "RET-12345",
+                "items": [
+                    {"productId": "prod-123", "productName": "iPhone 15", "quantityToReturn": 1},
+                    {"productId": "prod-456", "productName": "Case", "quantityToReturn": 2}
+                ]
+            }
+        }
+        """
+        try:
+            data = event_data.get('data', {})
+            return_id = data.get('returnId')
+            order_id = data.get('orderId')
+            return_number = data.get('returnNumber')
+            items = data.get('items', [])
+            correlation_id = event_data.get('correlationid') or event_data.get('correlationId')
+            
+            if not return_id or not order_id or not items:
+                raise ValueError("Missing returnId, orderId, or items in event data")
+            
+            current_app.logger.info(
+                f"📦 Handling inventory.return.release for return: {return_number} (order: {order_id})",
+                extra={"correlationId": correlation_id, "returnId": return_id, "itemCount": len(items)}
+            )
+            
+            items_returned = 0
+            total_quantity_returned = 0
+            
+            for item in items:
+                product_id = item.get('productId')
+                quantity_to_return = item.get('quantityToReturn', 0)
+                product_name = item.get('productName', 'Unknown Product')
+                
+                if not product_id or quantity_to_return <= 0:
+                    current_app.logger.warning(
+                        f"⚠️ Invalid item in return: {product_id}",
+                        extra={"correlationId": correlation_id}
+                    )
+                    continue
+                
+                # Find inventory record (lock for update to prevent race conditions)
+                inventory = InventoryItem.query.filter_by(
+                    product_id=product_id,
+                    is_active=True
+                ).with_for_update().first()
+                
+                if not inventory:
+                    current_app.logger.error(
+                        f"❌ InventoryItem not found for product: {product_id}",
+                        extra={"correlationId": correlation_id, "productId": product_id}
+                    )
+                    # Continue with other items even if one fails
+                    continue
+                
+                # Add returned quantity back to available stock
+                inventory.quantity += quantity_to_return
+                
+                current_app.logger.info(
+                    f"✅ Returned {quantity_to_return} units of {product_name} to stock",
+                    extra={
+                        "correlationId": correlation_id,
+                        "productId": product_id,
+                        "quantityReturned": quantity_to_return,
+                        "newQuantity": inventory.quantity
+                    }
+                )
+                
+                # Publish stock.returned event for audit/analytics
+                event_publisher.publish_stock_returned(
+                    product_id=product_id,
+                    quantity=quantity_to_return,
+                    return_id=str(return_id),
+                    order_id=str(order_id),
+                    correlation_id=correlation_id
+                )
+                
+                items_returned += 1
+                total_quantity_returned += quantity_to_return
+            
+            # Commit all changes atomically
+            db.session.commit()
+            
+            current_app.logger.info(
+                f"✅ Completed inventory return for: {return_number} "
+                f"({items_returned} items, {total_quantity_returned} total units)",
+                extra={
+                    "correlationId": correlation_id,
+                    "returnId": return_id,
+                    "itemsReturned": items_returned,
+                    "totalQuantity": total_quantity_returned
+                }
+            )
+            
+            return {
+                "status": "success",
+                "message": f"Inventory return completed for {return_number}",
+                "itemsReturned": items_returned,
+                "totalQuantityReturned": total_quantity_returned
+            }
+            
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(
+                f"❌ Error handling inventory.return.release: {str(e)}",
+                extra={"error": str(e), "correlationId": event_data.get('correlationid')}
+            )
+            return {"status": "error", "message": str(e)}

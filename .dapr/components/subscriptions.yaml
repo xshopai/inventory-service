@@ -77,3 +77,16 @@ spec:
   topic: payment.failed
   routes:
     default: /events/payment.failed
+---
+apiVersion: dapr.io/v2alpha1
+kind: Subscription
+metadata:
+  name: inventory-release-subscription
+spec:
+  pubsubname: pubsub
+  topic: inventory.release
+  routes:
+    default: /events/inventory.release
+  deadLetterTopic: inventory.release.deadletter
+  scopes:
+    - inventory-service

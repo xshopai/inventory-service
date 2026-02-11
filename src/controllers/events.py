@@ -34,6 +34,10 @@ SUBSCRIPTIONS = [
     # Payment events (from payment-service)
     {"pubsubname": "pubsub", "topic": "payment.received", "route": "/events/payment.received"},
     {"pubsubname": "pubsub", "topic": "payment.failed", "route": "/events/payment.failed"},
+    # Saga compensation events (from order-processor-service)
+    {"pubsubname": "pubsub", "topic": "inventory.release", "route": "/events/inventory.release"},
+    # Return events (from order-processor-service)
+    {"pubsubname": "pubsub", "topic": "inventory.return.release", "route": "/events/inventory.return.release"},
 ]
 
 
@@ -164,5 +168,126 @@ def payment_failed():
         return jsonify({"status": "SUCCESS" if result.get('status') == 'success' else "DROP"}), 200
     except Exception as e:
         current_app.logger.error(f"Error processing payment.failed: {str(e)}")
+        return jsonify({"status": "RETRY"}), 200
+
+
+@events_bp.route('/events/inventory.release', methods=['POST'])
+@require_service_token
+def inventory_release():
+    """
+    Handle inventory.release event - saga compensation transaction
+    
+    Triggered by order-processor-service when saga fails and needs rollback.
+    Releases inventory reservation to return stock to available pool.
+    
+    Critical for preventing inventory leaks in failed order scenarios:
+    - Payment fails after inventory reserved → Release inventory
+    - Shipping fails after inventory reserved → Release inventory
+    - Order cancelled after inventory reserved → Release inventory
+    """
+    try:
+        event_data = request.get_json()
+        current_app.logger.info(f"Received inventory.release compensation event")
+        
+        # Extract order ID and reservation ID from event
+        data = event_data.get('data', {})
+        order_id = data.get('orderId')
+        reservation_id = data.get('reservationId')
+        
+        if not order_id:
+            current_app.logger.error("inventory.release event missing orderId")
+            return jsonify({"status": "DROP"}), 200
+        
+        current_app.logger.warn(
+            f"Processing saga compensation: Releasing inventory for order {order_id}",
+            extra={"correlationId": event_data.get('correlationId'), "orderId": order_id, "reservationId": reservation_id}
+        )
+        
+        # Call service to release inventory
+        result = events_service.handle_inventory_release(event_data)
+        
+        if result.get('status') == 'success':
+            current_app.logger.info(
+                f"Saga compensation completed: Inventory released for order {order_id}",
+                extra={"correlationId": event_data.get('correlationId'), "orderId": order_id}
+            )
+            return jsonify({"status": "SUCCESS"}), 200
+        else:
+            # Retry compensation on failure - critical for data consistency
+            current_app.logger.error(
+                f"Saga compensation failed: Could not release inventory for order {order_id}",
+                extra={"correlationId": event_data.get('correlationId'), "orderId": order_id, "error": result.get('message')}
+            )
+            return jsonify({"status": "RETRY"}), 200
+            
+    except Exception as e:
+        current_app.logger.error(f"Error processing inventory.release compensation: {str(e)}")
+        return jsonify({"status": "RETRY"}), 200
+
+
+@events_bp.route('/events/inventory.return.release', methods=['POST'])
+@require_service_token
+def inventory_return_release():
+    """
+    Handle inventory.return.release event - return items to stock
+    
+    Triggered by order-processor-service when a return is approved.
+    Adds returned items back to available stock.
+    
+    Event flow:
+    1. Customer requests return via order-service
+    2. Admin approves return → order-service publishes return.approved
+    3. Order-processor-service handles return.approved → publishes inventory.return.release
+    4. Inventory-service adds items back to stock
+    """
+    try:
+        event_data = request.get_json()
+        current_app.logger.info(f"Received inventory.return.release event")
+        
+        # Extract return details from event
+        data = event_data.get('data', {})
+        return_id = data.get('returnId')
+        return_number = data.get('returnNumber')
+        
+        if not return_id:
+            current_app.logger.error("inventory.return.release event missing returnId")
+            return jsonify({"status": "DROP"}), 200
+        
+        current_app.logger.info(
+            f"Processing inventory return: {return_number}",
+            extra={
+                "correlationId": event_data.get('correlationId'), 
+                "returnId": return_id,
+                "returnNumber": return_number
+            }
+        )
+        
+        # Call service to add items back to stock
+        result = events_service.handle_inventory_return_release(event_data)
+        
+        if result.get('status') == 'success':
+            current_app.logger.info(
+                f"Inventory return completed: {return_number}",
+                extra={
+                    "correlationId": event_data.get('correlationId'), 
+                    "returnId": return_id,
+                    "itemsReturned": result.get('itemsReturned', 0)
+                }
+            )
+            return jsonify({"status": "SUCCESS"}), 200
+        else:
+            # Retry on failure - critical for data consistency
+            current_app.logger.error(
+                f"Inventory return failed: {return_number}",
+                extra={
+                    "correlationId": event_data.get('correlationId'), 
+                    "returnId": return_id, 
+                    "error": result.get('message')
+                }
+            )
+            return jsonify({"status": "RETRY"}), 200
+            
+    except Exception as e:
+        current_app.logger.error(f"Error processing inventory.return.release: {str(e)}")
         return jsonify({"status": "RETRY"}), 200
 
