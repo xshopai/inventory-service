@@ -6,15 +6,38 @@ Flask-based microservice for managing product inventory.
 
 import os
 import logging
+from datetime import datetime
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-# Set logging level
+# Color formatter for bootstrap logging (before Flask logger is configured)
+class BootstrapColorFormatter(logging.Formatter):
+    COLORS = {
+        'DEBUG': '\033[94m',    # Blue
+        'INFO': '\033[92m',     # Green
+        'WARNING': '\033[93m',  # Yellow
+        'ERROR': '\033[91m',    # Red
+        'CRITICAL': '\033[95m', # Magenta
+    }
+    RESET = '\033[0m'
+    
+    def format(self, record):
+        timestamp = datetime.fromtimestamp(record.created).isoformat()
+        color = self.COLORS.get(record.levelname, '')
+        # Format: [timestamp] [LEVEL] logger-name [bootstrap]: message
+        base_msg = f"[{timestamp}] [{record.levelname}] {record.name} [bootstrap]: {record.getMessage()}"
+        if color:
+            base_msg = f"{color}{base_msg}{self.RESET}"
+        return base_msg
+
+# Configure bootstrap logging with colored output
+_handler = logging.StreamHandler()
+_handler.setFormatter(BootstrapColorFormatter())
 logging.basicConfig(
     level=logging.DEBUG if os.environ.get('FLASK_DEBUG') == '1' else logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    handlers=[_handler]
 )
 logger = logging.getLogger(__name__)
 
@@ -24,6 +47,7 @@ logging.getLogger('azure.core.pipeline.policies.http_logging_policy').setLevel(l
 logging.getLogger('azure.monitor.opentelemetry.exporter').setLevel(logging.WARNING)
 logging.getLogger('opentelemetry').setLevel(logging.WARNING)
 logging.getLogger('urllib3').setLevel(logging.WARNING)
+logging.getLogger('alembic.runtime.plugins').setLevel(logging.WARNING)  # Suppress verbose Alembic plugin setup
 
 # ============================================================================
 # CRITICAL: Instrument SQLAlchemy/PyMySQL BEFORE any database imports happen!
@@ -102,8 +126,9 @@ def main():
     host = os.environ.get('HOST', '0.0.0.0')
     port = int(os.environ.get('PORT', 8005))
     debug = env == 'development'
+    display_host = 'localhost' if host == '0.0.0.0' else host
     
-    logger.info(f"Starting Inventory Service on {host}:{port}")
+    logger.info(f"Starting Inventory Service on {display_host}:{port}")
     
     # Run the application
     # IMPORTANT: use_reloader=False is critical for VS Code debugger to work

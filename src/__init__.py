@@ -46,12 +46,39 @@ def configure_logging(app):
     """
     Configure logging based on environment variables.
     Supports console and file logging with JSON or console format.
+    Color-coded output for development consistency with other services.
     """
     log_level = getattr(logging, app.config.get('LOG_LEVEL', 'INFO').upper())
     log_format = app.config.get('LOG_FORMAT', 'console')
     log_to_console = app.config.get('LOG_TO_CONSOLE', True)
     log_to_file = app.config.get('LOG_TO_FILE', False)
     log_file_path = app.config.get('LOG_FILE_PATH', './logs/inventory-service.log')
+    service_name = 'inventory-service'
+    
+    # ANSI color codes for console output
+    COLORS = {
+        'DEBUG': '\033[94m',    # Blue
+        'INFO': '\033[92m',     # Green
+        'WARNING': '\033[93m',  # Yellow
+        'ERROR': '\033[91m',    # Red
+        'CRITICAL': '\033[95m', # Magenta
+    }
+    RESET = '\033[0m'
+    
+    class ColorFormatter(logging.Formatter):
+        """Colored formatter for development console output - matches Node.js services format"""
+        def format(self, record):
+            from datetime import datetime
+            timestamp = datetime.fromtimestamp(record.created).isoformat()
+            color = COLORS.get(record.levelname, '')
+            
+            # Format: [timestamp] [LEVEL] service [trace:xxx]: message
+            base_msg = f"[{timestamp}] [{record.levelname}] {service_name} [no-trace]: {record.getMessage()}"
+            
+            if color:
+                base_msg = f"{color}{base_msg}{RESET}"
+            
+            return base_msg
     
     # Create formatter based on format type
     if log_format == 'json':
@@ -61,9 +88,7 @@ def configure_logging(app):
             '"message": "%(message)s"}'
         )
     else:
-        formatter = logging.Formatter(
-            '%(asctime)s %(levelname)s %(name)s: %(message)s'
-        )
+        formatter = ColorFormatter()
     
     # Get root logger
     root_logger = logging.getLogger()
