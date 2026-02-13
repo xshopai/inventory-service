@@ -28,7 +28,7 @@ SUBSCRIPTIONS = [
     {"pubsubname": "pubsub", "topic": "product.updated", "route": "/events/product.updated"},
     {"pubsubname": "pubsub", "topic": "product.deleted", "route": "/events/product.deleted"},
     # Order events (from order-service)
-    {"pubsubname": "pubsub", "topic": "order.created", "route": "/events/order.created"},
+    {"pubsubname": "pubsub", "topic": "order.placed", "route": "/events/order.placed"},
     {"pubsubname": "pubsub", "topic": "order.cancelled", "route": "/events/order.cancelled"},
     {"pubsubname": "pubsub", "topic": "order.completed", "route": "/events/order.completed"},
     # Payment events (from payment-service)
@@ -101,17 +101,17 @@ def product_deleted():
         return jsonify({"status": "RETRY"}), 200
 
 
-@events_bp.route('/events/order.created', methods=['POST'])
+@events_bp.route('/events/order.placed', methods=['POST'])
 @require_service_token
 def order_created():
-    """Handle order.created event - reserve stock"""
+    """Handle order.placed event - reserve stock"""
     try:
         event_data = request.get_json()
-        current_app.logger.info(f"Received order.created event")
+        current_app.logger.info(f"Received order.placed event")
         result = events_service.handle_order_created(event_data)
         return jsonify({"status": "SUCCESS" if result.get('status') == 'success' else "RETRY"}), 200
     except Exception as e:
-        current_app.logger.error(f"Error processing order.created: {str(e)}")
+        current_app.logger.error(f"Error processing order.placed: {str(e)}")
         return jsonify({"status": "RETRY"}), 200
 
 
