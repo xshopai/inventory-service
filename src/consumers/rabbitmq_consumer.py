@@ -32,7 +32,7 @@ class RabbitMQConsumer:
         "product.created": "handle_product_created",
         "product.updated": "handle_product_updated",
         "product.deleted": "handle_product_deleted",
-        "order.placed": "handle_order_created",
+        "order.created": "handle_order_created",
         "order.cancelled": "handle_order_cancelled",
         "order.completed": "handle_order_completed",
         "payment.received": "handle_payment_received",

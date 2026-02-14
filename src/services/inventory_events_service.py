@@ -267,7 +267,7 @@ class InventoryEventsService:
     @staticmethod
     def handle_order_created(event_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Handle order.placed event from order-service.
+        Handle order.created event from order-service.
         Reserve stock for the order items.
         
         Event payload structure:
@@ -291,7 +291,7 @@ class InventoryEventsService:
                 raise ValueError("Missing orderId or items in event data")
             
             current_app.logger.info(
-                f"📦 Handling order.placed for order: {order_id}",
+                f"📦 Handling order.created for order: {order_id}",
                 extra={"correlationId": correlation_id, "itemCount": len(items)}
             )
             
@@ -384,7 +384,7 @@ class InventoryEventsService:
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(
-                f"❌ Error handling order.placed: {str(e)}",
+                f"❌ Error handling order.created: {str(e)}",
                 extra={"error": str(e), "correlationId": event_data.get('correlationid')}
             )
             return {"status": "error", "message": str(e)}
