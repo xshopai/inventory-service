@@ -218,6 +218,18 @@ def create_app(config_name='default'):
     from src.utils.error_handlers import register_error_handlers
     register_error_handlers(app)
     
+    # Start RabbitMQ consumer for dev environments without Dapr
+    # Only starts if MESSAGING_PROVIDER=rabbitmq
+    # Note: Consumers are in src/consumers/, publishers are in src/messaging/
+    if not app.testing:
+        try:
+            from src.consumers.rabbitmq_consumer import start_rabbitmq_consumer
+            consumer = start_rabbitmq_consumer(app)
+            if consumer:
+                app.logger.info("🐰 RabbitMQ consumer started for event consumption")
+        except Exception as e:
+            app.logger.warning(f"RabbitMQ consumer startup failed: {e}. Using Dapr for events.")
+    
     # Database tables creation is deferred to init_database() function
     return app
 

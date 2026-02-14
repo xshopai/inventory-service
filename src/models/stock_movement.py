@@ -3,7 +3,7 @@ Stock Movement Model
 """
 
 from src.database import db
-from datetime import datetime
+from datetime import datetime, timezone
 from .enums import StockMovementType
 
 
@@ -18,7 +18,7 @@ class StockMovement(db.Model):
     reference = db.Column(db.String(255), nullable=True)  # Order ID, Restock ID, etc.
     reason = db.Column(db.Text, nullable=True)
     created_by = db.Column(db.String(100), default='system', nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     
     def __repr__(self):
         return f'<StockMovement {self.sku} {self.movement_type.value} {self.quantity}>'

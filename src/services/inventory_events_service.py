@@ -4,11 +4,12 @@ Inventory Events Service - Business logic for handling external events
 
 from flask import current_app
 from typing import Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import uuid
 
 from src.database import db
 from src.models import InventoryItem, Reservation
+from src.models.enums import ReservationStatus
 from src.utils.event_publisher import event_publisher
 
 
@@ -207,16 +208,29 @@ class InventoryEventsService:
                 )
                 return {"status": "skipped", "message": "No SKUs to archive"}
             
-            archived_count = 0
+            deleted_count = 0
             
-            # Archive inventory for each SKU
+            # Delete inventory for each SKU (soft-delete not supported - model has no is_active)
             for sku in skus:
                 inventory = InventoryItem.query.filter_by(sku=sku).first()
                 if inventory:
-                    inventory.is_active = False
-                    archived_count += 1
+                    # Check if there are active reservations
+                    active_reservations = Reservation.query.filter(
+                        Reservation.sku == sku,
+                        Reservation.status.in_([ReservationStatus.PENDING, ReservationStatus.CONFIRMED])
+                    ).count()
+                    
+                    if active_reservations > 0:
+                        current_app.logger.warning(
+                            f"⚠️ Cannot delete inventory for SKU: {sku} - has {active_reservations} active reservations",
+                            extra={"correlationId": correlation_id, "sku": sku, "activeReservations": active_reservations}
+                        )
+                        continue
+                    
+                    db.session.delete(inventory)
+                    deleted_count += 1
                     current_app.logger.info(
-                        f"✅ Archived inventory for SKU: {sku}",
+                        f"✅ Deleted inventory for SKU: {sku}",
                         extra={"correlationId": correlation_id, "sku": sku}
                     )
                 else:
@@ -228,14 +242,14 @@ class InventoryEventsService:
             db.session.commit()
             
             current_app.logger.info(
-                f"✅ Archived {archived_count} inventory records for deleted product: {product_id}",
-                extra={"correlationId": correlation_id, "archivedCount": archived_count}
+                f"✅ Deleted {deleted_count} inventory records for deleted product: {product_id}",
+                extra={"correlationId": correlation_id, "deletedCount": deleted_count}
             )
             
             return {
                 "status": "success",
-                "message": f"Archived {archived_count} inventory records for product {product_id}",
-                "archived_skus": skus
+                "message": f"Deleted {deleted_count} inventory records for product {product_id}",
+                "deleted_skus": skus
             }
             
         except Exception as e:
@@ -255,12 +269,23 @@ class InventoryEventsService:
         """
         Handle order.placed event from order-service.
         Reserve stock for the order items.
+        
+        Event payload structure:
+        {
+            "data": {
+                "orderId": "order-123",
+                "items": [
+                    {"sku": "SKU-001", "quantity": 2},
+                    {"sku": "SKU-002", "quantity": 1}
+                ]
+            }
+        }
         """
         try:
             data = event_data.get('data', {})
             order_id = data.get('orderId')
             items = data.get('items', [])
-            correlation_id = event_data.get('correlationid')
+            correlation_id = event_data.get('correlationid') or event_data.get('correlationId')
             
             if not order_id or not items:
                 raise ValueError("Missing orderId or items in event data")
@@ -273,70 +298,70 @@ class InventoryEventsService:
             reservations_created = []
             
             for item in items:
-                product_id = item.get('productId')
+                sku = item.get('sku')
                 quantity = item.get('quantity', 0)
                 
-                if not product_id or quantity <= 0:
+                if not sku or quantity <= 0:
                     current_app.logger.warning(
-                        f"⚠️ Invalid item in order: {product_id}",
+                        f"⚠️ Invalid item in order: sku={sku}, quantity={quantity}",
                         extra={"correlationId": correlation_id}
                     )
                     continue
                 
-                # Find inventory
+                # Find inventory by SKU (lock for update to prevent race conditions)
                 inventory = InventoryItem.query.filter_by(
-                    product_id=product_id,
-                    is_active=True
+                    sku=sku
                 ).with_for_update().first()
                 
                 if not inventory:
                     current_app.logger.error(
-                        f"❌ InventoryItem not found for product: {product_id}",
+                        f"❌ InventoryItem not found for SKU: {sku}",
                         extra={"correlationId": correlation_id}
                     )
                     db.session.rollback()
                     return {
                         "status": "error",
-                        "message": f"InventoryItem not found for product {product_id}"
+                        "message": f"InventoryItem not found for SKU {sku}"
                     }
                 
-                # Check available stock
-                available = inventory.quantity - inventory.reserved_quantity
-                if available < quantity:
+                # Check available stock (quantity_available minus already reserved)
+                if inventory.quantity_available < quantity:
                     current_app.logger.error(
-                        f"❌ Insufficient stock for product: {product_id} "
-                        f"(available: {available}, requested: {quantity})",
+                        f"❌ Insufficient stock for SKU: {sku} "
+                        f"(available: {inventory.quantity_available}, requested: {quantity})",
                         extra={"correlationId": correlation_id}
                     )
                     db.session.rollback()
                     return {
                         "status": "error",
-                        "message": f"Insufficient stock for product {product_id}"
+                        "message": f"Insufficient stock for SKU {sku}"
                     }
                 
                 # Create reservation
                 reservation_id = str(uuid.uuid4())
                 reservation = Reservation(
                     id=reservation_id,
-                    product_id=product_id,
+                    sku=sku,
                     order_id=order_id,
                     quantity=quantity,
-                    status='reserved',
+                    status=ReservationStatus.PENDING,
                     expires_at=datetime.now(timezone.utc) + timedelta(hours=24)
                 )
                 
-                inventory.reserved_quantity += quantity
+                # Move stock from available to reserved
+                inventory.quantity_available -= quantity
+                inventory.quantity_reserved += quantity
                 
                 db.session.add(reservation)
                 reservations_created.append({
                     "reservationId": reservation_id,
-                    "productId": product_id,
+                    "sku": sku,
                     "quantity": quantity
                 })
                 
                 # Publish stock.reserved event
                 event_publisher.publish_stock_reserved(
-                    product_id=product_id,
+                    sku=sku,
                     quantity=quantity,
                     order_id=order_id,
                     reservation_id=reservation_id,
@@ -369,12 +394,20 @@ class InventoryEventsService:
         """
         Handle order.cancelled event from order-service.
         Release reserved stock for the cancelled order.
+        
+        Event payload structure:
+        {
+            "data": {
+                "orderId": "order-123",
+                "reason": "Customer cancelled"
+            }
+        }
         """
         try:
             data = event_data.get('data', {})
             order_id = data.get('orderId')
             reason = data.get('reason', 'Order cancelled')
-            correlation_id = event_data.get('correlationid')
+            correlation_id = event_data.get('correlationid') or event_data.get('correlationId')
             
             if not order_id:
                 raise ValueError("Missing orderId in event data")
@@ -384,10 +417,10 @@ class InventoryEventsService:
                 extra={"correlationId": correlation_id}
             )
             
-            # Find all reservations for this order
-            reservations = Reservation.query.filter_by(
-                order_id=order_id,
-                status='reserved'
+            # Find all reservations for this order (PENDING or ACTIVE status)
+            reservations = Reservation.query.filter(
+                Reservation.order_id == order_id,
+                Reservation.status.in_([ReservationStatus.PENDING, ReservationStatus.ACTIVE])
             ).all()
             
             if not reservations:
@@ -401,16 +434,19 @@ class InventoryEventsService:
             
             for reservation in reservations:
                 inventory = InventoryItem.query.filter_by(
-                    product_id=reservation.product_id
+                    sku=reservation.sku
                 ).with_for_update().first()
                 
                 if inventory:
-                    inventory.reserved_quantity = max(0, inventory.reserved_quantity - reservation.quantity)
-                    reservation.status = 'released'
-                    reservation.released_at = datetime.utcnow()
+                    # Move stock from reserved back to available
+                    inventory.quantity_reserved = max(0, inventory.quantity_reserved - reservation.quantity)
+                    inventory.quantity_available += reservation.quantity
+                    
+                    # Update reservation status to CANCELLED
+                    reservation.status = ReservationStatus.CANCELLED
                     
                     event_publisher.publish_stock_released(
-                        product_id=reservation.product_id,
+                        sku=reservation.sku,
                         quantity=reservation.quantity,
                         order_id=order_id,
                         reason=reason,
@@ -444,12 +480,19 @@ class InventoryEventsService:
     def handle_order_completed(event_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Handle order.completed event from order-service.
-        Deduct reserved stock permanently.
+        Confirm reserved stock finalization - reserved stock is now sold.
+        
+        Event payload structure:
+        {
+            "data": {
+                "orderId": "order-123"
+            }
+        }
         """
         try:
             data = event_data.get('data', {})
             order_id = data.get('orderId')
-            correlation_id = event_data.get('correlationid')
+            correlation_id = event_data.get('correlationid') or event_data.get('correlationId')
             
             if not order_id:
                 raise ValueError("Missing orderId in event data")
@@ -459,9 +502,9 @@ class InventoryEventsService:
                 extra={"correlationId": correlation_id}
             )
             
-            reservations = Reservation.query.filter_by(
-                order_id=order_id,
-                status='reserved'
+            reservations = Reservation.query.filter(
+                Reservation.order_id == order_id,
+                Reservation.status.in_([ReservationStatus.PENDING, ReservationStatus.ACTIVE, ReservationStatus.CONFIRMED])
             ).all()
             
             if not reservations:
@@ -475,34 +518,35 @@ class InventoryEventsService:
             
             for reservation in reservations:
                 inventory = InventoryItem.query.filter_by(
-                    product_id=reservation.product_id
+                    sku=reservation.sku
                 ).with_for_update().first()
                 
                 if inventory:
-                    inventory.quantity = max(0, inventory.quantity - reservation.quantity)
-                    inventory.reserved_quantity = max(0, inventory.reserved_quantity - reservation.quantity)
+                    # Reserved stock is now officially sold - just reduce the reserved quantity
+                    # (quantity_available was already reduced when reservation was created)
+                    inventory.quantity_reserved = max(0, inventory.quantity_reserved - reservation.quantity)
                     
-                    reservation.status = 'completed'
-                    reservation.completed_at = datetime.now(timezone.utc)
+                    # Mark reservation as released (completed)
+                    reservation.status = ReservationStatus.RELEASED
                     
                     event_publisher.publish_stock_updated(
-                        product_id=reservation.product_id,
-                        quantity=inventory.quantity,
+                        sku=reservation.sku,
+                        quantity=inventory.quantity_available,
                         correlation_id=correlation_id
                     )
                     
-                    # Check for low stock
-                    if inventory.quantity <= inventory.low_stock_threshold:
-                        if inventory.quantity == 0:
+                    # Check for low stock (compare available against reorder_level)
+                    if inventory.quantity_available <= inventory.reorder_level:
+                        if inventory.quantity_available == 0:
                             event_publisher.publish_out_of_stock_alert(
-                                product_id=reservation.product_id,
+                                sku=reservation.sku,
                                 correlation_id=correlation_id
                             )
                         else:
                             event_publisher.publish_low_stock_alert(
-                                product_id=reservation.product_id,
-                                current_quantity=inventory.quantity,
-                                threshold=inventory.low_stock_threshold,
+                                sku=reservation.sku,
+                                current_quantity=inventory.quantity_available,
+                                threshold=inventory.reorder_level,
                                 correlation_id=correlation_id
                             )
                     
@@ -538,12 +582,20 @@ class InventoryEventsService:
         """
         Handle payment.received event from payment-service.
         Confirm stock reservation (mark as confirmed).
+        
+        Event payload structure:
+        {
+            "data": {
+                "orderId": "order-123",
+                "paymentId": "payment-456"
+            }
+        }
         """
         try:
             data = event_data.get('data', {})
             order_id = data.get('orderId')
             payment_id = data.get('paymentId')
-            correlation_id = event_data.get('correlationid')
+            correlation_id = event_data.get('correlationid') or event_data.get('correlationId')
             
             if not order_id:
                 raise ValueError("Missing orderId in event data")
@@ -553,10 +605,10 @@ class InventoryEventsService:
                 extra={"correlationId": correlation_id, "paymentId": payment_id}
             )
             
-            # Find all reservations for this order
-            reservations = Reservation.query.filter_by(
-                order_id=order_id,
-                status='reserved'
+            # Find all reservations for this order (PENDING or ACTIVE status)
+            reservations = Reservation.query.filter(
+                Reservation.order_id == order_id,
+                Reservation.status.in_([ReservationStatus.PENDING, ReservationStatus.ACTIVE])
             ).all()
             
             if not reservations:
@@ -569,8 +621,7 @@ class InventoryEventsService:
             confirmed_count = 0
             
             for reservation in reservations:
-                reservation.status = 'confirmed'
-                reservation.confirmed_at = datetime.utcnow()
+                reservation.status = ReservationStatus.CONFIRMED
                 confirmed_count += 1
             
             db.session.commit()
@@ -599,12 +650,20 @@ class InventoryEventsService:
         """
         Handle payment.failed event from payment-service.
         Release reserved stock (same as order cancelled).
+        
+        Event payload structure:
+        {
+            "data": {
+                "orderId": "order-123",
+                "reason": "Insufficient funds"
+            }
+        }
         """
         try:
             data = event_data.get('data', {})
             order_id = data.get('orderId')
             reason = data.get('reason', 'Payment failed')
-            correlation_id = event_data.get('correlationid')
+            correlation_id = event_data.get('correlationid') or event_data.get('correlationId')
             
             if not order_id:
                 raise ValueError("Missing orderId in event data")
@@ -614,10 +673,10 @@ class InventoryEventsService:
                 extra={"correlationId": correlation_id, "reason": reason}
             )
             
-            # Find all reservations for this order
-            reservations = Reservation.query.filter_by(
-                order_id=order_id,
-                status='reserved'
+            # Find all reservations for this order (PENDING or ACTIVE status)
+            reservations = Reservation.query.filter(
+                Reservation.order_id == order_id,
+                Reservation.status.in_([ReservationStatus.PENDING, ReservationStatus.ACTIVE])
             ).all()
             
             if not reservations:
@@ -631,17 +690,21 @@ class InventoryEventsService:
             
             for reservation in reservations:
                 inventory = InventoryItem.query.filter_by(
-                    product_id=reservation.product_id
+                    sku=reservation.sku
                 ).with_for_update().first()
                 
                 if inventory:
-                    inventory.reserved_quantity = max(0, inventory.reserved_quantity - reservation.quantity)
-                    reservation.status = 'released'
-                    reservation.released_at = datetime.utcnow()
+                    # Return stock from reserved to available
+                    inventory.quantity_reserved = max(0, inventory.quantity_reserved - reservation.quantity)
+                    inventory.quantity_available += reservation.quantity
+                    
+                    # Mark reservation as released
+                    reservation.status = ReservationStatus.RELEASED
                     
                     event_publisher.publish_stock_released(
-                        product_id=reservation.product_id,
+                        sku=reservation.sku,
                         quantity=reservation.quantity,
+                        order_id=order_id,
                         reason=f"Payment failed: {reason}",
                         correlation_id=correlation_id
                     )
@@ -704,18 +767,18 @@ class InventoryEventsService:
                 extra={"correlationId": correlation_id, "orderId": order_id, "reservationId": reservation_id}
             )
             
-            # Find reservations to release
+            # Find reservations to release (PENDING or ACTIVE status)
             if reservation_id:
                 # Release specific reservation
-                reservations = Reservation.query.filter_by(
-                    id=reservation_id,
-                    status='reserved'
+                reservations = Reservation.query.filter(
+                    Reservation.id == reservation_id,
+                    Reservation.status.in_([ReservationStatus.PENDING, ReservationStatus.ACTIVE])
                 ).all()
             else:
                 # Release all active reservations for this order
-                reservations = Reservation.query.filter_by(
-                    order_id=order_id,
-                    status='reserved'
+                reservations = Reservation.query.filter(
+                    Reservation.order_id == order_id,
+                    Reservation.status.in_([ReservationStatus.PENDING, ReservationStatus.ACTIVE])
                 ).all()
             
             if not reservations:
@@ -732,22 +795,22 @@ class InventoryEventsService:
             for reservation in reservations:
                 # Lock inventory row for update (prevent race conditions)
                 inventory = InventoryItem.query.filter_by(
-                    product_id=reservation.product_id
+                    sku=reservation.sku
                 ).with_for_update().first()
                 
                 if inventory:
                     # Return reserved quantity back to available pool
-                    inventory.reserved_quantity = max(0, inventory.reserved_quantity - reservation.quantity)
+                    inventory.quantity_reserved = max(0, inventory.quantity_reserved - reservation.quantity)
+                    inventory.quantity_available += reservation.quantity
                     
                     # Mark reservation as released (compensation completed)
-                    reservation.status = 'released'
-                    reservation.released_at = datetime.utcnow()
-                    reservation.release_reason = 'SAGA_COMPENSATION'
+                    reservation.status = ReservationStatus.RELEASED
                     
                     # Publish stock.released event for audit/analytics
                     event_publisher.publish_stock_released(
-                        product_id=reservation.product_id,
+                        sku=reservation.sku,
                         quantity=reservation.quantity,
+                        order_id=order_id,
                         reason=f"Saga compensation for order {order_id}",
                         correlation_id=correlation_id
                     )
@@ -756,8 +819,8 @@ class InventoryEventsService:
                     total_quantity_released += reservation.quantity
                     
                     current_app.logger.debug(
-                        f"✅ Released reservation: product={reservation.product_id}, qty={reservation.quantity}",
-                        extra={"correlationId": correlation_id, "productId": reservation.product_id}
+                        f"✅ Released reservation: sku={reservation.sku}, qty={reservation.quantity}",
+                        extra={"correlationId": correlation_id, "sku": reservation.sku}
                     )
             
             # Commit all changes atomically
@@ -807,8 +870,8 @@ class InventoryEventsService:
                 "orderId": "uuid",
                 "returnNumber": "RET-12345",
                 "items": [
-                    {"productId": "prod-123", "productName": "iPhone 15", "quantityToReturn": 1},
-                    {"productId": "prod-456", "productName": "Case", "quantityToReturn": 2}
+                    {"sku": "SKU-001", "productName": "iPhone 15", "quantityToReturn": 1},
+                    {"sku": "SKU-002", "productName": "Case", "quantityToReturn": 2}
                 ]
             }
         }
@@ -833,50 +896,47 @@ class InventoryEventsService:
             total_quantity_returned = 0
             
             for item in items:
-                product_id = item.get('productId')
+                sku = item.get('sku')
                 quantity_to_return = item.get('quantityToReturn', 0)
                 product_name = item.get('productName', 'Unknown Product')
                 
-                if not product_id or quantity_to_return <= 0:
+                if not sku or quantity_to_return <= 0:
                     current_app.logger.warning(
-                        f"⚠️ Invalid item in return: {product_id}",
+                        f"⚠️ Invalid item in return: sku={sku}",
                         extra={"correlationId": correlation_id}
                     )
                     continue
                 
                 # Find inventory record (lock for update to prevent race conditions)
                 inventory = InventoryItem.query.filter_by(
-                    product_id=product_id,
-                    is_active=True
+                    sku=sku
                 ).with_for_update().first()
                 
                 if not inventory:
                     current_app.logger.error(
-                        f"❌ InventoryItem not found for product: {product_id}",
-                        extra={"correlationId": correlation_id, "productId": product_id}
+                        f"❌ InventoryItem not found for SKU: {sku}",
+                        extra={"correlationId": correlation_id, "sku": sku}
                     )
                     # Continue with other items even if one fails
                     continue
                 
                 # Add returned quantity back to available stock
-                inventory.quantity += quantity_to_return
+                inventory.quantity_available += quantity_to_return
                 
                 current_app.logger.info(
                     f"✅ Returned {quantity_to_return} units of {product_name} to stock",
                     extra={
                         "correlationId": correlation_id,
-                        "productId": product_id,
+                        "sku": sku,
                         "quantityReturned": quantity_to_return,
-                        "newQuantity": inventory.quantity
+                        "newQuantity": inventory.quantity_available
                     }
                 )
                 
-                # Publish stock.returned event for audit/analytics
-                event_publisher.publish_stock_returned(
-                    product_id=product_id,
-                    quantity=quantity_to_return,
-                    return_id=str(return_id),
-                    order_id=str(order_id),
+                # Publish stock.updated event for audit/analytics
+                event_publisher.publish_stock_updated(
+                    sku=sku,
+                    quantity=inventory.quantity_available,
                     correlation_id=correlation_id
                 )
                 

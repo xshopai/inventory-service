@@ -3,7 +3,7 @@ Reservation Model
 """
 
 from src.database import db
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 from .enums import ReservationStatus
 
@@ -18,8 +18,8 @@ class Reservation(db.Model):
     quantity = db.Column(db.Integer, nullable=False)
     status = db.Column(db.Enum(ReservationStatus), default=ReservationStatus.PENDING, nullable=False)
     expires_at = db.Column(db.DateTime, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
     
     def __repr__(self):
         return f'<Reservation {self.id}>'
@@ -27,7 +27,7 @@ class Reservation(db.Model):
     @property
     def is_expired(self):
         """Check if reservation has expired"""
-        return datetime.utcnow() > self.expires_at
+        return datetime.now(timezone.utc) > self.expires_at
     
     def to_dict(self):
         """Convert to dictionary"""

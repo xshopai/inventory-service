@@ -5,7 +5,7 @@ Inventory Repository Implementation
 from typing import List, Optional
 from src.database import db
 from src.models import InventoryItem, StockMovement, StockMovementType
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import or_
 from .base import InventoryRepositoryInterface
@@ -40,7 +40,7 @@ class InventoryRepository(InventoryRepositoryInterface):
     
     def update(self, item: InventoryItem) -> InventoryItem:
         """Update inventory item"""
-        item.updated_at = datetime.utcnow()
+        item.updated_at = datetime.now(timezone.utc)
         db.session.commit()
         return item
     

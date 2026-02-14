@@ -7,7 +7,7 @@ import time
 import os
 import psutil
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import text
 from src.database import db
 import logging
@@ -177,7 +177,7 @@ def perform_readiness_check():
         
         return {
             'status': 'ready' if overall_healthy else 'not ready',
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'total_check_time': total_check_time,
             'checks': checks,
         }
@@ -187,7 +187,7 @@ def perform_readiness_check():
         
         return {
             'status': 'not ready',
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'total_check_time': round((time.time() - check_start_time) * 1000, 2),
             'error': str(e),
             'checks': checks,
@@ -228,7 +228,7 @@ def perform_liveness_check():
         
         return {
             'status': 'alive' if is_healthy else 'unhealthy',
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'uptime': round(time.time() - psutil.boot_time(), 2),
             'checks': {
                 'memory': {
@@ -260,7 +260,7 @@ def perform_liveness_check():
         
         return {
             'status': 'unhealthy',
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'error': str(e),
         }
 
@@ -272,7 +272,7 @@ def get_system_metrics():
         memory_info = process.memory_info()
         
         return {
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'uptime': round(time.time() - psutil.boot_time(), 2),
             'memory': {
                 'rss': memory_info.rss,
@@ -305,6 +305,6 @@ def get_system_metrics():
     except Exception as e:
         logger.error('Metrics collection failed', extra={'error': str(e)})
         return {
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'error': str(e),
         }

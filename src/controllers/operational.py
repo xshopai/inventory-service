@@ -4,7 +4,7 @@ These endpoints are used by monitoring systems, load balancers, and Kubernetes
 """
 
 from flask import Blueprint, jsonify
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 import logging
 from src.utils.health_checks import (
@@ -48,7 +48,7 @@ def readiness():
         return jsonify({
             'status': 'not ready',
             'service': 'inventory-service',
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'error': 'Readiness check failed',
             'details': str(e),
         }), 503
@@ -83,7 +83,7 @@ def liveness():
         return jsonify({
             'status': 'unhealthy',
             'service': 'inventory-service',
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'error': 'Liveness check failed',
             'details': str(e),
         }), 503
@@ -104,7 +104,7 @@ def metrics():
         logger.error('Metrics collection failed', extra={'error': str(e)})
         return jsonify({
             'service': 'inventory-service',
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'error': 'Metrics collection failed',
             'details': str(e),
         }), 500

@@ -58,8 +58,20 @@ class ProductionConfig(Config):
     # Override with production values if needed
 
 
+class TestingConfig(Config):
+    """Testing configuration"""
+    TESTING = True
+    DEBUG = True
+    LOG_LEVEL = 'DEBUG'
+    # Use SQLite in-memory database for tests
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    # Disable CSRF for testing
+    WTF_CSRF_ENABLED = False
+
+
 config = {
     'development': DevelopmentConfig,
     'production': ProductionConfig,
+    'testing': TestingConfig,
     'default': DevelopmentConfig
 }
