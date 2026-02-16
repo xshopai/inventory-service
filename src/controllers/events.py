@@ -9,7 +9,7 @@ Includes:
 
 from flask import Blueprint, request, jsonify, current_app
 from src.services.inventory_events_service import InventoryEventsService
-from src.middlewares.auth import require_service_token
+from src.middlewares.auth import require_dapr_token
 
 events_bp = Blueprint('events', __name__)
 events_service = InventoryEventsService()
@@ -60,7 +60,7 @@ def get_subscriptions():
 # ============================================================================
 
 @events_bp.route('/events/product.created', methods=['POST'])
-@require_service_token
+@require_dapr_token
 def product_created():
     """Handle product.created event"""
     try:
@@ -74,7 +74,7 @@ def product_created():
 
 
 @events_bp.route('/events/product.updated', methods=['POST'])
-@require_service_token
+@require_dapr_token
 def product_updated():
     """Handle product.updated event"""
     try:
@@ -88,7 +88,7 @@ def product_updated():
 
 
 @events_bp.route('/events/product.deleted', methods=['POST'])
-@require_service_token
+@require_dapr_token
 def product_deleted():
     """Handle product.deleted event"""
     try:
@@ -102,7 +102,7 @@ def product_deleted():
 
 
 @events_bp.route('/events/order.created', methods=['POST'])
-@require_service_token
+@require_dapr_token
 def order_created():
     """Handle order.created event - reserve stock"""
     try:
@@ -116,7 +116,7 @@ def order_created():
 
 
 @events_bp.route('/events/order.cancelled', methods=['POST'])
-@require_service_token
+@require_dapr_token
 def order_cancelled():
     """Handle order.cancelled event - release stock"""
     try:
@@ -130,7 +130,7 @@ def order_cancelled():
 
 
 @events_bp.route('/events/order.completed', methods=['POST'])
-@require_service_token
+@require_dapr_token
 def order_completed():
     """Handle order.completed event"""
     try:
@@ -144,7 +144,7 @@ def order_completed():
 
 
 @events_bp.route('/events/payment.received', methods=['POST'])
-@require_service_token
+@require_dapr_token
 def payment_received():
     """Handle payment.received event - confirm stock reservation"""
     try:
@@ -158,7 +158,7 @@ def payment_received():
 
 
 @events_bp.route('/events/payment.failed', methods=['POST'])
-@require_service_token
+@require_dapr_token
 def payment_failed():
     """Handle payment.failed event - release reserved stock"""
     try:
@@ -172,7 +172,7 @@ def payment_failed():
 
 
 @events_bp.route('/events/inventory.release', methods=['POST'])
-@require_service_token
+@require_dapr_token
 def inventory_release():
     """
     Handle inventory.release event - saga compensation transaction
@@ -226,7 +226,7 @@ def inventory_release():
 
 
 @events_bp.route('/events/inventory.return.release', methods=['POST'])
-@require_service_token
+@require_dapr_token
 def inventory_return_release():
     """
     Handle inventory.return.release event - return items to stock

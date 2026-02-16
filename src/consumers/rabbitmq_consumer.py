@@ -20,6 +20,9 @@ from flask import Flask
 
 logger = logging.getLogger(__name__)
 
+# Suppress noisy pika debug logs (heartbeat/timeout internals)
+logging.getLogger('pika').setLevel(logging.WARNING)
+
 
 class RabbitMQConsumer:
     """
@@ -130,7 +133,21 @@ class RabbitMQConsumer:
         
         try:
             # Parse message body as JSON
-            event_data = json.loads(body)
+            raw_data = json.loads(body)
+            
+            # Normalize to CloudEvents-style envelope.
+            # Dapr wraps payloads under a 'data' key (CloudEvents spec),
+            # but RabbitMQ direct publishers send the payload at root level.
+            # Wrap raw payloads so all handlers can use event_data.get('data', {}).
+            if 'data' in raw_data:
+                event_data = raw_data
+            else:
+                event_data = {
+                    'topic': topic,
+                    'data': raw_data,
+                    'traceparent': raw_data.get('traceparent'),
+                    'correlationId': correlation_id,
+                }
             
             logger.info(
                 f"📨 Received message on topic: {topic}",
@@ -282,15 +299,20 @@ def start_rabbitmq_consumer(app: Flask) -> Optional[RabbitMQConsumer]:
         )
         return None
     
-    # Build RabbitMQ URL from environment variables
-    rabbitmq_host = os.environ.get('RABBITMQ_HOST', 'localhost')
-    rabbitmq_port = os.environ.get('RABBITMQ_PORT', '5672')
-    rabbitmq_user = os.environ.get('RABBITMQ_USER', 'admin')
-    rabbitmq_pass = os.environ.get('RABBITMQ_PASSWORD', 'admin123')
-    rabbitmq_vhost = os.environ.get('RABBITMQ_VHOST', '/')
+    # Use RABBITMQ_URL if set (preferred), otherwise build from individual vars
+    rabbitmq_url = os.environ.get('RABBITMQ_URL')
     rabbitmq_exchange = os.environ.get('RABBITMQ_EXCHANGE', 'xshopai.events')
     
-    rabbitmq_url = f"amqp://{rabbitmq_user}:{rabbitmq_pass}@{rabbitmq_host}:{rabbitmq_port}/{rabbitmq_vhost}"
+    if not rabbitmq_url:
+        from urllib.parse import quote as url_quote
+        rabbitmq_host = os.environ.get('RABBITMQ_HOST', 'localhost')
+        rabbitmq_port = os.environ.get('RABBITMQ_PORT', '5672')
+        rabbitmq_user = os.environ.get('RABBITMQ_USER', 'admin')
+        rabbitmq_pass = os.environ.get('RABBITMQ_PASSWORD', 'admin123')
+        rabbitmq_vhost = os.environ.get('RABBITMQ_VHOST', '/')
+        # Percent-encode vhost (/ becomes %2F) per AMQP URL spec
+        encoded_vhost = url_quote(rabbitmq_vhost, safe='')
+        rabbitmq_url = f"amqp://{rabbitmq_user}:{rabbitmq_pass}@{rabbitmq_host}:{rabbitmq_port}/{encoded_vhost}"
     
     try:
         _consumer = RabbitMQConsumer(app, rabbitmq_url, rabbitmq_exchange)

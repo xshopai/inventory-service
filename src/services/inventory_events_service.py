@@ -280,6 +280,9 @@ class InventoryEventsService:
                 ]
             }
         }
+        
+        Note: SKUs may be variant SKUs (e.g., "WOM-CLO-TOP-001-BLACK-M") or base SKUs.
+        This handler extracts the base SKU (first 4 segments) if the variant SKU is not found.
         """
         try:
             data = event_data.get('data', {})
@@ -313,9 +316,28 @@ class InventoryEventsService:
                     sku=sku
                 ).with_for_update().first()
                 
+                # If not found, try to extract base SKU from variant SKU
+                # Variant SKU format: BASE-SKU-COLOR-SIZE (e.g., WOM-CLO-TOP-001-BLACK-M)
+                # Base SKU format: DEPT-CAT-SUBCAT-NUM (e.g., WOM-CLO-TOP-001)
+                lookup_sku = sku
+                if not inventory:
+                    parts = sku.split('-')
+                    # Base SKU has 4 parts (e.g., WOM-CLO-TOP-001)
+                    # If we have more parts, it's likely a variant SKU
+                    if len(parts) > 4:
+                        base_sku = '-'.join(parts[:4])
+                        current_app.logger.info(
+                            f"🔍 Variant SKU detected, trying base SKU: {base_sku}",
+                            extra={"correlationId": correlation_id, "originalSku": sku}
+                        )
+                        inventory = InventoryItem.query.filter_by(
+                            sku=base_sku
+                        ).with_for_update().first()
+                        lookup_sku = base_sku
+                
                 if not inventory:
                     current_app.logger.error(
-                        f"❌ InventoryItem not found for SKU: {sku}",
+                        f"❌ InventoryItem not found for SKU: {sku} (also tried base SKU extraction)",
                         extra={"correlationId": correlation_id}
                     )
                     db.session.rollback()
@@ -327,21 +349,21 @@ class InventoryEventsService:
                 # Check available stock (quantity_available minus already reserved)
                 if inventory.quantity_available < quantity:
                     current_app.logger.error(
-                        f"❌ Insufficient stock for SKU: {sku} "
+                        f"❌ Insufficient stock for SKU: {lookup_sku} "
                         f"(available: {inventory.quantity_available}, requested: {quantity})",
                         extra={"correlationId": correlation_id}
                     )
                     db.session.rollback()
                     return {
                         "status": "error",
-                        "message": f"Insufficient stock for SKU {sku}"
+                        "message": f"Insufficient stock for SKU {lookup_sku}"
                     }
                 
-                # Create reservation
+                # Create reservation (using the lookup SKU for consistency)
                 reservation_id = str(uuid.uuid4())
                 reservation = Reservation(
                     id=reservation_id,
-                    sku=sku,
+                    sku=lookup_sku,
                     order_id=order_id,
                     quantity=quantity,
                     status=ReservationStatus.PENDING,

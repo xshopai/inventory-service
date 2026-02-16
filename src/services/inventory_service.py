@@ -56,9 +56,36 @@ class InventoryService:
                     if not in_stock_only or item.quantity_available > 0:
                         result.append(item_data)
                 else:
-                    # No exact match - check if it's a base SKU by finding variants
-                    # Base SKU pattern: BRAND-DEPT-CAT-NUM (e.g., ANT-WOM-CLO-001)
-                    # Variant SKU pattern: BRAND-DEPT-CAT-NUM-COLOR-SIZE (e.g., ANT-WOM-CLO-001-GRAY-M)
+                    # No exact match - check if it's a variant SKU and try base SKU lookup
+                    parts = sku.split('-')
+                    base_sku = None
+                    
+                    # If SKU has more than 4 parts, it's likely a variant SKU
+                    # Extract base SKU (first 4 parts: DEPT-CAT-SUBCAT-NUM)
+                    if len(parts) > 4:
+                        base_sku = '-'.join(parts[:4])
+                        base_items = self.inventory_repo.get_multiple_by_skus([base_sku])
+                        
+                        if base_items:
+                            # Found base SKU inventory - return it for this variant
+                            item = base_items[0]
+                            item_data = {
+                                'sku': sku,  # Return original variant SKU for client reference
+                                'baseSku': base_sku,  # Include base SKU for transparency
+                                'quantityAvailable': item.quantity_available,
+                                'quantityReserved': item.quantity_reserved,
+                                'reorderPoint': item.reorder_level,
+                                'reorderQuantity': item.max_stock - item.reorder_level if item.max_stock > item.reorder_level else 0,
+                                'status': 'in_stock' if item.quantity_available > 0 else 'out_of_stock'
+                            }
+                            
+                            if not in_stock_only or item.quantity_available > 0:
+                                result.append(item_data)
+                            continue
+                    
+                    # Check if it's a base SKU by finding variants
+                    # Base SKU pattern: DEPT-CAT-SUBCAT-NUM (e.g., WOM-CLO-TOP-001)
+                    # Variant SKU pattern: DEPT-CAT-SUBCAT-NUM-COLOR-SIZE (e.g., WOM-CLO-TOP-001-BLACK-M)
                     variant_items = self.inventory_repo.get_variants_by_base_sku(sku)
                     
                     if variant_items:

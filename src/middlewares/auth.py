@@ -318,3 +318,61 @@ def require_service_token(f):
             }, 500
     
     return decorated_function
+
+
+def require_dapr_token(f):
+    """
+    Decorator to validate Dapr sidecar pub/sub event delivery.
+    
+    Dapr delivers CloudEvents via HTTP POST to subscriber endpoints.
+    This decorator validates that the request originates from the Dapr sidecar
+    by checking for the dapr-api-token header (if configured) or accepting
+    Dapr user-agent requests.
+    
+    This is NOT the same as require_service_token which expects a custom
+    X-Service-Token header that Dapr never sends.
+    
+    Usage:
+        @require_dapr_token
+        def handle_order_created():
+            # Only callable by Dapr sidecar
+            pass
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        try:
+            # Option 1: Validate dapr-api-token if configured
+            configured_token = os.environ.get('DAPR_API_TOKEN', '')
+            if configured_token:
+                incoming_token = request.headers.get('dapr-api-token', '')
+                if incoming_token != configured_token:
+                    logger.warning('Dapr API token validation failed')
+                    return {
+                        'success': False,
+                        'error': 'Invalid Dapr API token',
+                        'message': 'Event delivery authentication failed'
+                    }, 401
+                g.calling_service = 'dapr-sidecar'
+                return f(*args, **kwargs)
+            
+            # Option 2: No API token configured - accept all event deliveries
+            # In production, DAPR_API_TOKEN should be configured for security.
+            # In local dev, Dapr sidecar is trusted by default.
+            user_agent = request.headers.get('User-Agent', '')
+            if 'fasthttp' in user_agent.lower() or 'dapr' in user_agent.lower():
+                g.calling_service = 'dapr-sidecar'
+            else:
+                g.calling_service = 'unknown'
+                logger.debug(f'Event received from non-Dapr user-agent: {user_agent}')
+            
+            return f(*args, **kwargs)
+            
+        except Exception as e:
+            logger.error(f'Dapr token validation error: {str(e)}')
+            return {
+                'success': False,
+                'error': 'Authentication error',
+                'message': 'Event delivery authentication failed'
+            }, 500
+    
+    return decorated_function

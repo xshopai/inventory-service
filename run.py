@@ -128,16 +128,20 @@ def main():
     debug = env == 'development'
     display_host = 'localhost' if host == '0.0.0.0' else host
     
+    # Check if reloader should be enabled (for dev.sh hot reload)
+    use_reloader = os.environ.get('USE_RELOADER', 'false').lower() == 'true'
+    
     logger.info(f"Starting Inventory Service on {display_host}:{port}")
     
     # Run the application
     # IMPORTANT: use_reloader=False is critical for VS Code debugger to work
     # The reloader spawns a child process which the debugger doesn't attach to
+    # Set USE_RELOADER=true in dev.sh for hot reload during development
     app.run(
         host=host,
         port=port,
         debug=debug,
-        use_reloader=False,  # Disable reloader for debugging
+        use_reloader=use_reloader,
         threaded=True
     )
 

@@ -39,5 +39,8 @@ if [ ! -f "venv/.deps_installed" ]; then
     touch venv/.deps_installed
 fi
 
-# Run the service
+# Run the service with hot reload
+export FLASK_DEBUG=1
+export FLASK_ENV=development
+export USE_RELOADER=true
 python run.py
