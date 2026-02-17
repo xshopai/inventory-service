@@ -341,8 +341,18 @@ class InventoryEventsService:
                         extra={"correlationId": correlation_id}
                     )
                     db.session.rollback()
+                    # Publish failure event for saga compensation
+                    event_publisher.publish_reservation_failed(
+                        order_id=order_id,
+                        sku=sku,
+                        reason="Inventory item not found",
+                        requested_quantity=quantity,
+                        available_quantity=0,
+                        correlation_id=correlation_id
+                    )
+                    # Return business_error - permanent failure, should not retry
                     return {
-                        "status": "error",
+                        "status": "business_error",
                         "message": f"InventoryItem not found for SKU {sku}"
                     }
                 
@@ -354,8 +364,18 @@ class InventoryEventsService:
                         extra={"correlationId": correlation_id}
                     )
                     db.session.rollback()
+                    # Publish failure event for saga compensation
+                    event_publisher.publish_reservation_failed(
+                        order_id=order_id,
+                        sku=lookup_sku,
+                        reason="Insufficient stock",
+                        requested_quantity=quantity,
+                        available_quantity=inventory.quantity_available,
+                        correlation_id=correlation_id
+                    )
+                    # Return business_error - permanent failure, should not retry
                     return {
-                        "status": "error",
+                        "status": "business_error",
                         "message": f"Insufficient stock for SKU {lookup_sku}"
                     }
                 

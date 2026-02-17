@@ -168,6 +168,27 @@ class InventoryEventPublisher:
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
         return self.publish_event("inventory.created", data, correlation_id)
+    
+    def publish_reservation_failed(self, order_id: str, sku: str,
+                                   reason: str, requested_quantity: int,
+                                   available_quantity: int = 0,
+                                   correlation_id: Optional[str] = None) -> bool:
+        """
+        Publish inventory.reservation.failed event for saga compensation.
+        
+        This event signals to the order-service/saga coordinator that
+        inventory reservation for this order failed (e.g., insufficient stock)
+        and the order should be rolled back or compensated.
+        """
+        data = {
+            "orderId": order_id,
+            "sku": sku,
+            "reason": reason,
+            "requestedQuantity": requested_quantity,
+            "availableQuantity": available_quantity,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        return self.publish_event("inventory.reservation.failed", data, correlation_id)
 
 
 # Global singleton instance

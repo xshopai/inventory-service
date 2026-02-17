@@ -174,13 +174,22 @@ class RabbitMQConsumer:
             with self.app.app_context():
                 result = handler(event_data)
                 
-                if result.get('status') == 'error':
+                status = result.get('status')
+                if status == 'error':
+                    # Transient error - requeue for retry (e.g., DB connection issue)
                     logger.error(
-                        f"Handler returned error: {result.get('message')}",
+                        f"Handler returned transient error - will retry: {result.get('message')}",
                         extra={"topic": topic, "correlationId": correlation_id}
                     )
-                    # Requeue message for retry (nack with requeue)
                     ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+                elif status == 'business_error':
+                    # Permanent business error - acknowledge but don't retry
+                    # (e.g., insufficient stock, item not found)
+                    logger.warning(
+                        f"⚠️ Handler returned business error - acknowledging without retry: {result.get('message')}",
+                        extra={"topic": topic, "correlationId": correlation_id}
+                    )
+                    ch.basic_ack(delivery_tag=method.delivery_tag)
                 else:
                     logger.info(
                         f"✅ Successfully processed message: {topic}",
@@ -243,7 +252,7 @@ class RabbitMQConsumer:
             )
             self._consumer_thread.start()
             
-            logger.info("🐰 RabbitMQ consumer started successfully")
+            logger.info("[RabbitMQ] Consumer started successfully")
             
         except Exception as e:
             logger.error(f"Failed to start RabbitMQ consumer: {e}")

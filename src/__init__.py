@@ -226,7 +226,7 @@ def create_app(config_name='default'):
             from src.consumers.rabbitmq_consumer import start_rabbitmq_consumer
             consumer = start_rabbitmq_consumer(app)
             if consumer:
-                app.logger.info("🐰 RabbitMQ consumer started for event consumption")
+                app.logger.info("[RabbitMQ] Consumer started for event consumption")
         except Exception as e:
             app.logger.warning(f"RabbitMQ consumer startup failed: {e}. Using Dapr for events.")
     
