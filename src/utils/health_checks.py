@@ -38,7 +38,6 @@ def check_database_health():
                 'pool_size': db.engine.pool.size(),
                 'checked_in': db.engine.pool.checkedin(),
                 'checked_out': db.engine.pool.checkedout(),
-                'invalidated': db.engine.pool.invalidated(),
             },
         }
     except Exception as e:

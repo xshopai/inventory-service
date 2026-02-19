@@ -55,7 +55,15 @@ class DevelopmentConfig(Config):
 class ProductionConfig(Config):
     """Production configuration"""
     DEBUG = False
-    # Override with production values if needed
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_pre_ping': True,
+        'pool_recycle': 300,
+        'connect_args': {
+            'ssl': {
+                'ca': '/etc/ssl/certs/DigiCertGlobalRootG2.crt.pem'
+            }
+        }
+    }
 
 
 class TestingConfig(Config):
