@@ -86,12 +86,13 @@ RUN mkdir -p logs && chown -R inventoryuser:appgroup logs
 # Switch to non-root user
 USER inventoryuser
 
-# Expose port (configurable via PORT env var, default: 8005)
-EXPOSE 8005
+# Expose port
+ENV PORT=8080
+EXPOSE 8080
 
 # Health check (using Python to avoid curl dependency)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import urllib.request; import os; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\", \"8005\")}/health/ready')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health/ready')" || exit 1
 
 # Start production server with gunicorn
 # Migrations are run automatically on startup before starting the server
@@ -99,7 +100,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 # --preload ensures OpenTelemetry is initialized once before workers fork
 # --workers 2: Optimized for horizontal scaling (prefer multiple containers over workers)
 # set -e ensures the container fails if migrations fail (prevents silent failures)
-CMD sh -c "set -e && echo 'Running database migrations...' && FLASK_SKIP_AZURE_MONITOR=true flask db upgrade && echo 'Migrations complete. Starting server...' && exec gunicorn --bind 0.0.0.0:\${PORT:-8005} --workers 2 --timeout 120 --preload run:app"
+CMD sh -c "set -e && echo 'Running database migrations...' && FLASK_SKIP_AZURE_MONITOR=true flask db upgrade && echo 'Migrations complete. Starting server...' && exec gunicorn --bind 0.0.0.0:\${PORT:-8080} --workers 2 --timeout 120 --preload run:app"
 
 # Labels for better image management and security scanning
 LABEL maintainer="xshopai Team"
