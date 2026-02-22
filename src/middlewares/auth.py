@@ -27,10 +27,10 @@ def _get_service_tokens():
     global _service_tokens
     if _service_tokens is None:
         _service_tokens = {
-            'product-service': os.environ.get('SERVICE_PRODUCT_TOKEN', ''),
-            'order-service': os.environ.get('SERVICE_ORDER_TOKEN', ''),
-            'cart-service': os.environ.get('SERVICE_CART_TOKEN', ''),
-            'web-bff': os.environ.get('SERVICE_WEBBFF_TOKEN', ''),
+            'product-service': os.environ.get('PRODUCT_SERVICE_TOKEN', ''),
+            'order-service': os.environ.get('ORDER_SERVICE_TOKEN', ''),
+            'cart-service': os.environ.get('CART_SERVICE_TOKEN', ''),
+            'web-bff': os.environ.get('WEBBFF_SERVICE_TOKEN', ''),
         }
     return _service_tokens
 
