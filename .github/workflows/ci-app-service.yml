@@ -42,7 +42,7 @@ on:
         default: ""
 
 env:
-  PYTHON_VERSION: "3.12" # Must match infrastructure runtime (PYTHON:3.12)
+  PYTHON_VERSION: "3.11" # Must match infrastructure runtime (PYTHON:3.11)
   SERVICE_NAME: inventory-service
   PROJECT_NAME: xshopai
 
