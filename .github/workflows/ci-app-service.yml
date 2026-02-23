@@ -207,6 +207,18 @@ jobs:
           package: ${{ github.workspace }}/deploy.zip
 
       # -------------------------------------------------------------------
+      # Set startup command (Flask with Gunicorn)
+      # -------------------------------------------------------------------
+      - name: Configure startup command
+        run: |
+          echo "Setting startup command for Flask/Gunicorn..."
+          az webapp config set \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --startup-file "gunicorn --bind=0.0.0.0:8080 --workers=2 --timeout=600 run:app"
+          echo "✓ Startup command configured"
+
+      # -------------------------------------------------------------------
       # Health check
       # -------------------------------------------------------------------
       - name: Verify deployment
