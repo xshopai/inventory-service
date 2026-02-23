@@ -6,16 +6,17 @@ def get_database_uri():
     """
     Get database URI from environment variables.
     Falls back to defaults for local development.
+    
+    Expects MYSQL_SERVER_CONNECTION to be a complete SQLAlchemy URL format:
+    mysql+pymysql://user:pass@host/database?ssl_mode=REQUIRED
     """
-    # Get connection string and database name from environment
+    # Get connection string from environment (should be complete SQLAlchemy URL)
     server_connection = os.environ.get('MYSQL_SERVER_CONNECTION')
-    db_name = os.environ.get('DB_NAME', 'inventory_service_db')
     
     if server_connection:
-        # Append database name to connection string
-        if '?' in server_connection:
-            return f"{server_connection.split('?')[0]}/{db_name}?{server_connection.split('?')[1]}"
-        return f"{server_connection}/{db_name}"
+        # Use connection string directly - it should already be in SQLAlchemy URL format
+        # with database name included
+        return server_connection
     
     # Fallback: Defaults for local development
     return "mysql+pymysql://admin:admin123@localhost:3306/inventory_service_db"
