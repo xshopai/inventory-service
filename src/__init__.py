@@ -145,6 +145,11 @@ def create_app(config_name='default'):
     # Set database URI from Dapr secrets (lazy loading)
     app.config['SQLALCHEMY_DATABASE_URI'] = get_database_uri()
     
+    # Set engine options with SSL config (runtime detection for Azure MySQL)
+    config_class = config[config_name]
+    if hasattr(config_class, 'get_engine_options'):
+        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = config_class.get_engine_options()
+    
     # Initialize W3C Trace Context middleware
     from src.middlewares.trace_context import TraceContextMiddleware
     trace_middleware = TraceContextMiddleware(app)

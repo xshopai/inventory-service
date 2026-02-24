@@ -68,34 +68,34 @@ class DevelopmentConfig(Config):
     LOG_LEVEL = 'DEBUG'
     # MySQL is the primary database for all environments
     
-
-# Dynamically set SSL options based on connection string
-# This runs after class definition but before app initialization
-_mysql_conn = os.environ.get('MYSQL_SERVER_CONNECTION', '')
-if 'azure.com' in _mysql_conn or 'mysql.database' in _mysql_conn:
-    DevelopmentConfig.SQLALCHEMY_ENGINE_OPTIONS = {
-        'pool_pre_ping': True,
-        'pool_recycle': 300,
-        'connect_args': {'ssl': True}
-    }
-else:
-    DevelopmentConfig.SQLALCHEMY_ENGINE_OPTIONS = {
-        'pool_pre_ping': True,
-        'pool_recycle': 300,
-    }
+    @classmethod
+    def get_engine_options(cls):
+        """Get SQLAlchemy engine options with SSL config for Azure MySQL"""
+        mysql_conn = os.environ.get('MYSQL_SERVER_CONNECTION', '')
+        if 'azure.com' in mysql_conn or 'mysql.database' in mysql_conn:
+            return {
+                'pool_pre_ping': True,
+                'pool_recycle': 300,
+                'connect_args': {'ssl': True}
+            }
+        return {
+            'pool_pre_ping': True,
+            'pool_recycle': 300,
+        }
 
 class ProductionConfig(Config):
     """Production configuration"""
     DEBUG = False
-    SQLALCHEMY_ENGINE_OPTIONS = {
-        'pool_pre_ping': True,
-        'pool_recycle': 300,
-        'connect_args': {
-            'ssl': {
-                'ca': '/etc/ssl/certs/DigiCertGlobalRootG2.crt.pem'
-            }
+    
+    @classmethod
+    def get_engine_options(cls):
+        """Get SQLAlchemy engine options with SSL for Azure MySQL"""
+        # Azure MySQL requires SSL, use simple boolean flag (system CA certs)
+        return {
+            'pool_pre_ping': True,
+            'pool_recycle': 300,
+            'connect_args': {'ssl': True}
         }
-    }
 
 
 class TestingConfig(Config):
@@ -107,6 +107,10 @@ class TestingConfig(Config):
     SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
     # Disable CSRF for testing
     WTF_CSRF_ENABLED = False
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_pre_ping': True,
+        'pool_recycle': 300,
+    }
 
 
 config = {
