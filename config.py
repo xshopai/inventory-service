@@ -76,7 +76,7 @@ class DevelopmentConfig(Config):
             return {
                 'pool_pre_ping': True,
                 'pool_recycle': 300,
-                'connect_args': {'ssl': True}
+                'connect_args': {'ssl': {}}  # Empty dict enables SSL with default system CA
             }
         return {
             'pool_pre_ping': True,
@@ -90,11 +90,11 @@ class ProductionConfig(Config):
     @classmethod
     def get_engine_options(cls):
         """Get SQLAlchemy engine options with SSL for Azure MySQL"""
-        # Azure MySQL requires SSL, use simple boolean flag (system CA certs)
+        # Azure MySQL requires SSL, use empty dict for default system CA
         return {
             'pool_pre_ping': True,
             'pool_recycle': 300,
-            'connect_args': {'ssl': True}
+            'connect_args': {'ssl': {}}
         }
 
 
