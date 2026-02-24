@@ -10,25 +10,17 @@ def get_database_uri():
     Expects MYSQL_SERVER_CONNECTION to be a complete SQLAlchemy URL format:
     mysql+pymysql://user:pass@host/database?ssl_mode=REQUIRED
     
-    Note: The ssl_mode parameter is stripped from the URL because PyMySQL doesn't 
-    support it as a query parameter. SSL is configured via SQLALCHEMY_ENGINE_OPTIONS instead.
+    Note: ssl_mode is stripped because PyMySQL doesn't support it as a URL parameter.
+    SSL is configured via SQLALCHEMY_ENGINE_OPTIONS connect_args instead.
     """
     # Get connection string from environment (should be complete SQLAlchemy URL)
     server_connection = os.environ.get('MYSQL_SERVER_CONNECTION')
     
     if server_connection:
         # Strip ssl_mode from URL - PyMySQL doesn't support it as query parameter
-        # SSL is handled via connect_args in SQLALCHEMY_ENGINE_OPTIONS
-        from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
-        parsed = urlparse(server_connection)
-        query_params = parse_qs(parsed.query)
-        # Remove ssl_mode parameter (PyMySQL uses 'ssl' connect_arg instead)
-        query_params.pop('ssl_mode', None)
-        # Reconstruct URL without ssl_mode
-        new_query = urlencode(query_params, doseq=True)
-        clean_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, 
-                                parsed.params, new_query, parsed.fragment))
-        return clean_url
+        if 'ssl_mode=' in server_connection:
+            server_connection = server_connection.replace('?ssl_mode=REQUIRED', '').replace('&ssl_mode=REQUIRED', '')
+        return server_connection
     
     # Fallback: Defaults for local development
     return "mysql+pymysql://admin:admin123@localhost:3306/inventory_service_db"
@@ -67,35 +59,17 @@ class DevelopmentConfig(Config):
     DEBUG = True
     LOG_LEVEL = 'DEBUG'
     # MySQL is the primary database for all environments
-    
-    @classmethod
-    def get_engine_options(cls):
-        """Get SQLAlchemy engine options with SSL config for Azure MySQL"""
-        mysql_conn = os.environ.get('MYSQL_SERVER_CONNECTION', '')
-        if 'azure.com' in mysql_conn or 'mysql.database' in mysql_conn:
-            return {
-                'pool_pre_ping': True,
-                'pool_recycle': 300,
-                'connect_args': {'ssl': {}}  # Empty dict enables SSL with default system CA
-            }
-        return {
-            'pool_pre_ping': True,
-            'pool_recycle': 300,
-        }
 
 class ProductionConfig(Config):
     """Production configuration"""
     DEBUG = False
-    
-    @classmethod
-    def get_engine_options(cls):
-        """Get SQLAlchemy engine options with SSL for Azure MySQL"""
-        # Azure MySQL requires SSL, use empty dict for default system CA
-        return {
-            'pool_pre_ping': True,
-            'pool_recycle': 300,
-            'connect_args': {'ssl': {}}
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_pre_ping': True,
+        'pool_recycle': 300,
+        'connect_args': {
+            'ssl': {}  # Empty dict uses system default CA certificates
         }
+    }
 
 
 class TestingConfig(Config):
@@ -107,10 +81,6 @@ class TestingConfig(Config):
     SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
     # Disable CSRF for testing
     WTF_CSRF_ENABLED = False
-    SQLALCHEMY_ENGINE_OPTIONS = {
-        'pool_pre_ping': True,
-        'pool_recycle': 300,
-    }
 
 
 config = {
