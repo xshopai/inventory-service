@@ -188,24 +188,16 @@ jobs:
           fi
 
       # -------------------------------------------------------------------
-      # Create deployment package (pre-built with dependencies)
+      # Create deployment package (App Service Oryx will handle pip install)
       # -------------------------------------------------------------------
-      - name: Install dependencies for deployment
-        run: |
-          echo "Installing dependencies for deployment..."
-          pip install --target=".python_packages/lib/site-packages" -r requirements.txt
-          echo "✓ Dependencies installed to .python_packages/"
-
       - name: Create deployment package
         run: |
-          echo "Creating deployment package with dependencies..."
-          zip -r ${{ github.workspace }}/deploy.zip . \
-            -x "*.git*" -x "tests/*" -x ".github/*" -x "*.log" \
-            -x ".env*" -x "__pycache__/*" -x "*.pyc" -x "venv/*" -q
+          echo "Creating deployment package..."
+          zip -r ${{ github.workspace }}/deploy.zip . -x "*.git*" -x "tests/*" -x ".github/*" -x "*.log" -x ".env*" -x "__pycache__/*" -x "*.pyc" -x "venv/*" -q
           echo "✓ Package created: $(du -h deploy.zip | cut -f1)"
 
       # -------------------------------------------------------------------
-      # Deploy to App Service (no Oryx build - package includes dependencies)
+      # Deploy to App Service (Oryx handles Python build automatically)
       # -------------------------------------------------------------------
       - name: Deploy to App Service
         uses: azure/webapps-deploy@v3
