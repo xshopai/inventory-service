@@ -100,11 +100,10 @@ class Config:
         }
         
         # Add SSL config if ssl_mode was detected in the connection URL
-        # Use ssl=True to enable SSL with system default CA certificates
-        # (Azure MySQL uses DigiCert which is in the system trust store)
+        # PyMySQL expects ssl to be a dict (can be empty for default SSL)
         if is_ssl_required():
             options['connect_args'] = {
-                'ssl': True
+                'ssl': {}
             }
         
         return options
