@@ -250,6 +250,7 @@ jobs:
 
       # -------------------------------------------------------------------
       # Set startup command (Flask with Gunicorn)
+      # Includes --pythonpath to load pre-built dependencies
       # -------------------------------------------------------------------
       - name: Configure startup command
         run: |
@@ -257,8 +258,8 @@ jobs:
           az webapp config set \
             --name "$APP_NAME" \
             --resource-group "$RESOURCE_GROUP" \
-            --startup-file "gunicorn --bind=0.0.0.0:8080 --workers=2 --timeout=600 run:app"
-          echo "✓ Startup command configured"
+            --startup-file "gunicorn --bind=0.0.0.0:8080 --workers=2 --timeout=600 --pythonpath /home/site/wwwroot/.python_packages/lib/site-packages run:app"
+          echo "✓ Startup command configured with --pythonpath"
 
       # -------------------------------------------------------------------
       # Health check
