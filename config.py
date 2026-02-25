@@ -100,10 +100,14 @@ class Config:
         }
         
         # Add SSL config if ssl_mode was detected in the connection URL
-        # PyMySQL expects ssl to be a dict (can be empty for default SSL)
+        # For PyMySQL 1.0+, use ssl_mode as connect_arg (not URL param)
         if is_ssl_required():
+            import ssl as ssl_module
             options['connect_args'] = {
-                'ssl': {}
+                'ssl': {
+                    'check_hostname': False,
+                    'verify_mode': ssl_module.CERT_NONE
+                }
             }
         
         return options
