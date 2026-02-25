@@ -9,17 +9,13 @@ def get_database_uri():
     
     Expects MYSQL_SERVER_CONNECTION to be a complete SQLAlchemy URL format:
     mysql+pymysql://user:pass@host/database?ssl_mode=REQUIRED
-    
-    Note: ssl_mode is stripped because PyMySQL doesn't support it as a URL parameter.
-    SSL is configured via SQLALCHEMY_ENGINE_OPTIONS connect_args instead.
     """
     # Get connection string from environment (should be complete SQLAlchemy URL)
     server_connection = os.environ.get('MYSQL_SERVER_CONNECTION')
     
     if server_connection:
-        # Strip ssl_mode from URL - PyMySQL doesn't support it as query parameter
-        if 'ssl_mode=' in server_connection:
-            server_connection = server_connection.replace('?ssl_mode=REQUIRED', '').replace('&ssl_mode=REQUIRED', '')
+        # Use connection string directly - it should already be in SQLAlchemy URL format
+        # with database name included
         return server_connection
     
     # Fallback: Defaults for local development
@@ -67,7 +63,9 @@ class ProductionConfig(Config):
         'pool_pre_ping': True,
         'pool_recycle': 300,
         'connect_args': {
-            'ssl': {}  # Empty dict uses system default CA certificates
+            'ssl': {
+                'ca': '/etc/ssl/certs/DigiCertGlobalRootG2.crt.pem'
+            }
         }
     }
 
