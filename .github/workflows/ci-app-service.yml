@@ -72,6 +72,20 @@ jobs:
       - name: Install dev dependencies
         run: pip install -r requirements-dev.txt || true
 
+      # Pre-build dependencies using manylinux wheels for Azure App Service
+      # --only-binary :all: ensures we use portable pre-built wheels (manylinux)
+      # that target older GLIBC versions, avoiding runtime compatibility issues
+      - name: Pre-build dependencies for deployment
+        if: >
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          github.event_name == 'workflow_dispatch'
+        run: |
+          echo "Installing dependencies with manylinux binary wheels..."
+          pip install --only-binary :all: --platform manylinux2014_x86_64 --python-version 3.11 \
+            --target .python_packages/lib/site-packages \
+            -r requirements.txt
+          echo "✓ Dependencies installed: $(du -sh .python_packages | cut -f1)"
+
       - name: Run linting
         run: |
           pip install flake8 black isort
@@ -95,6 +109,7 @@ jobs:
           name: build-artifacts
           path: |
             **/*
+            .python_packages/**
             !.git/**
             !.github/**
             !tests/**
@@ -108,6 +123,9 @@ jobs:
             !__pycache__/**
             !*.pyc
             !.pytest_cache/**
+            !htmlcov/**
+            !coverage.json
+            !.coverage
           retention-days: 1
 
   # ============================================================================
@@ -188,16 +206,17 @@ jobs:
           fi
 
       # -------------------------------------------------------------------
-      # Create deployment package (App Service Oryx will handle pip install)
+      # Create deployment package (includes pre-built dependencies)
+      # Oryx is disabled - we use manylinux wheels pre-built in CI
       # -------------------------------------------------------------------
       - name: Create deployment package
         run: |
-          echo "Creating deployment package..."
+          echo "Creating deployment package with pre-built dependencies..."
           zip -r ${{ github.workspace }}/deploy.zip . -x "*.git*" -x "tests/*" -x ".github/*" -x "*.log" -x ".env*" -x "__pycache__/*" -x "*.pyc" -x "venv/*" -q
           echo "✓ Package created: $(du -h deploy.zip | cut -f1)"
 
       # -------------------------------------------------------------------
-      # Deploy to App Service (Oryx handles Python build automatically)
+      # Deploy to App Service (dependencies pre-built, Oryx disabled)
       # -------------------------------------------------------------------
       - name: Deploy to App Service
         uses: azure/webapps-deploy@v3
