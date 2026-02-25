@@ -38,6 +38,7 @@ class RabbitMQConsumer:
         "order.created": "handle_order_created",
         "order.cancelled": "handle_order_cancelled",
         "order.completed": "handle_order_completed",
+        "order.refunded": "handle_order_refunded",
         "payment.received": "handle_payment_received",
         "payment.failed": "handle_payment_failed",
         "inventory.release": "handle_inventory_release",

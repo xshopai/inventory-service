@@ -114,7 +114,7 @@ class InventoryEventPublisher:
     def publish_stock_reserved(self, sku: str, quantity: int, 
                               order_id: str, reservation_id: str,
                               correlation_id: Optional[str] = None) -> bool:
-        """Publish inventory.stock.reserved event"""
+        """Publish inventory.reserved event"""
         data = {
             "sku": sku,
             "quantity": quantity,
@@ -122,7 +122,7 @@ class InventoryEventPublisher:
             "reservationId": reservation_id,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
-        return self.publish_event("inventory.stock.reserved", data, correlation_id)
+        return self.publish_event("inventory.reserved", data, correlation_id)
     
     def publish_stock_released(self, sku: str, quantity: int,
                               order_id: str, reason: str,
@@ -174,9 +174,9 @@ class InventoryEventPublisher:
                                    available_quantity: int = 0,
                                    correlation_id: Optional[str] = None) -> bool:
         """
-        Publish inventory.reservation.failed event for saga compensation.
+        Publish inventory.failed event for saga compensation.
         
-        This event signals to the order-service/saga coordinator that
+        This event signals to the order-processor-service saga coordinator that
         inventory reservation for this order failed (e.g., insufficient stock)
         and the order should be rolled back or compensated.
         """
@@ -188,7 +188,7 @@ class InventoryEventPublisher:
             "availableQuantity": available_quantity,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
-        return self.publish_event("inventory.reservation.failed", data, correlation_id)
+        return self.publish_event("inventory.failed", data, correlation_id)
 
 
 # Global singleton instance

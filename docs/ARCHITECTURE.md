@@ -1054,7 +1054,7 @@ Inventory Service participates in the xshopai event-driven architecture as both 
 | Event Name                 | Trigger                             | Primary Consumer(s)                   | Priority |
 | -------------------------- | ----------------------------------- | ------------------------------------- | -------- |
 | `inventory.stock.updated`  | Stock level changes                 | Product Service                       | High     |
-| `inventory.stock.reserved` | Order placement creates reservation | Order Service, Audit Service          | High     |
+| `inventory.reserved`       | Order placement creates reservation | Order Processor Service, Audit Service| High     |
 | `inventory.stock.released` | Reservation cancelled/expired       | Order Service, Audit Service          | High     |
 | `inventory.low.stock`      | Available quantity ≤ threshold      | Notification Service, Admin Dashboard | Medium   |
 | `inventory.out.of.stock`   | Available quantity reaches zero     | Product Service, Notification Service | Critical |
@@ -1101,14 +1101,14 @@ All events use **CloudEvents 1.0** envelope with `source: "inventory-service"`. 
 
 ---
 
-#### 5.2.2 inventory.stock.reserved
+#### 5.2.2 inventory.reserved
 
 **Trigger:** Stock successfully reserved for an order
 
-| Consumer      | Purpose                     |
-| ------------- | --------------------------- |
-| Order Service | Confirm reservation created |
-| Audit Service | Audit trail                 |
+| Consumer                | Purpose                     |
+| ----------------------- | --------------------------- |
+| Order Processor Service | Continue saga flow          |
+| Audit Service           | Audit trail                 |
 
 **Payload:**
 

@@ -615,6 +615,93 @@ class InventoryEventsService:
             )
             return {"status": "error", "message": str(e)}
 
+    @staticmethod
+    def handle_order_refunded(event_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handle order.refunded event from payment-service.
+        Return stock to available inventory when order is refunded.
+        
+        Event payload structure:
+        {
+            "data": {
+                "orderId": "order-123",
+                "refundAmount": 99.99,
+                "refundReason": "Customer returned items"
+            }
+        }
+        """
+        try:
+            data = event_data.get('data', {})
+            order_id = data.get('orderId')
+            refund_reason = data.get('refundReason', 'Order refunded')
+            correlation_id = event_data.get('correlationid') or event_data.get('correlationId')
+            
+            if not order_id:
+                raise ValueError("Missing orderId in event data")
+            
+            current_app.logger.info(
+                f"💰 Handling order.refunded for order: {order_id}",
+                extra={"correlationId": correlation_id, "reason": refund_reason}
+            )
+            
+            # Find all reservations for this order (RELEASED status means order was completed)
+            reservations = Reservation.query.filter(
+                Reservation.order_id == order_id,
+                Reservation.status == ReservationStatus.RELEASED
+            ).all()
+            
+            if not reservations:
+                current_app.logger.warning(
+                    f"⚠️ No completed reservations found for refunded order: {order_id}",
+                    extra={"correlationId": correlation_id}
+                )
+                return {"status": "not_found", "message": "No reservations found to restore"}
+            
+            restored_count = 0
+            
+            for reservation in reservations:
+                inventory = InventoryItem.query.filter_by(
+                    sku=reservation.sku
+                ).with_for_update().first()
+                
+                if inventory:
+                    # Return stock to available (refund means items returned)
+                    inventory.quantity_available += reservation.quantity
+                    
+                    # Mark reservation as refunded
+                    reservation.status = ReservationStatus.CANCELLED  # Reuse cancelled for refund
+                    
+                    event_publisher.publish_stock_released(
+                        sku=reservation.sku,
+                        quantity=reservation.quantity,
+                        order_id=order_id,
+                        reason=f"Refund: {refund_reason}",
+                        correlation_id=correlation_id
+                    )
+                    
+                    restored_count += 1
+            
+            db.session.commit()
+            
+            current_app.logger.info(
+                f"✅ Restored stock for refunded order: {order_id} ({restored_count} items)",
+                extra={"correlationId": correlation_id}
+            )
+            
+            return {
+                "status": "success",
+                "message": f"Stock restored for refunded order {order_id}",
+                "itemsRestored": restored_count
+            }
+            
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(
+                f"❌ Error handling order.refunded: {str(e)}",
+                extra={"error": str(e), "correlationId": event_data.get('correlationid')}
+            )
+            return {"status": "error", "message": str(e)}
+
     # ============================================================================
     # Payment Events
     # ============================================================================
