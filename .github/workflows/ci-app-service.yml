@@ -107,6 +107,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: build-artifacts
+          include-hidden-files: true
           path: |
             **/*
             .python_packages/**
@@ -206,14 +207,36 @@ jobs:
           fi
 
       # -------------------------------------------------------------------
+      # Verify dependencies were downloaded (debug)
+      # -------------------------------------------------------------------
+      - name: Verify pre-built dependencies
+        run: |
+          echo "=== Artifact contents ==="
+          ls -la
+          if [ -d ".python_packages" ]; then
+            echo "✓ .python_packages directory found"
+            echo "  Size: $(du -sh .python_packages | cut -f1)"
+            ls .python_packages/lib/site-packages | head -20
+          else
+            echo "::error::.python_packages directory NOT found!"
+            ls -la
+            exit 1
+          fi
+
+      # -------------------------------------------------------------------
       # Create deployment package (includes pre-built dependencies)
       # Oryx is disabled - we use manylinux wheels pre-built in CI
       # -------------------------------------------------------------------
       - name: Create deployment package
         run: |
           echo "Creating deployment package with pre-built dependencies..."
-          zip -r ${{ github.workspace }}/deploy.zip . -x "*.git*" -x "tests/*" -x ".github/*" -x "*.log" -x ".env*" -x "__pycache__/*" -x "*.pyc" -x "venv/*" -q
+          # Explicitly include .python_packages and all app files
+          zip -r ${{ github.workspace }}/deploy.zip . \
+            -x "*.git*" -x "tests/*" -x ".github/*" -x "*.log" \
+            -x ".env*" -x "__pycache__/*" -x "*.pyc" -x "venv/*" -q
           echo "✓ Package created: $(du -h deploy.zip | cut -f1)"
+          echo "=== Verifying .python_packages in zip ==="
+          unzip -l deploy.zip | grep -c "python_packages" | xargs -I {} echo "  Found {} entries matching python_packages"
 
       # -------------------------------------------------------------------
       # Deploy to App Service (dependencies pre-built, Oryx disabled)
