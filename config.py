@@ -100,11 +100,11 @@ class Config:
         }
         
         # Add SSL config if ssl_mode was detected in the connection URL
+        # Use ssl=True to enable SSL with system default CA certificates
+        # (Azure MySQL uses DigiCert which is in the system trust store)
         if is_ssl_required():
             options['connect_args'] = {
-                'ssl': {
-                    'ca': '/etc/ssl/certs/DigiCertGlobalRootG2.crt.pem'
-                }
+                'ssl': True
             }
         
         return options
