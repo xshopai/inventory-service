@@ -18,9 +18,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVICE_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$SERVICE_DIR"
 
-if [ -f ".env.dev" ]; then
-    cp ".env.dev" ".env"
-    echo "✅ Copied .env.dev → .env"
+if [ -f ".env.http" ]; then
+    cp ".env.http" ".env"
+    echo "✅ Copied .env.http → .env"
 fi
 
 # Create virtual environment if it doesn't exist
