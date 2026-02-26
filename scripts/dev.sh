@@ -13,7 +13,7 @@ for pid in $(netstat -ano 2>/dev/null | grep ":$PORT" | grep LISTENING | awk '{p
     taskkill //F //PID $pid 2>/dev/null
 done
 
-# Copy .env.dev to .env for local development
+# Copy .env.http to .env for local development (HTTP mode, no Dapr)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVICE_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$SERVICE_DIR"
