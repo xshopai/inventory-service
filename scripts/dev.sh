@@ -13,14 +13,14 @@ for pid in $(netstat -ano 2>/dev/null | grep ":$PORT" | grep LISTENING | awk '{p
     taskkill //F //PID $pid 2>/dev/null
 done
 
-# Copy .env.http to .env for local development (HTTP mode, no Dapr)
+# Copy .env.example to .env for local development (HTTP mode, no Dapr)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVICE_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$SERVICE_DIR"
 
-if [ -f ".env.http" ]; then
-    cp ".env.http" ".env"
-    echo "✅ Copied .env.http → .env"
+if [ -f ".env.example" ]; then
+    cp ".env.example" ".env"
+    echo "✅ Copied .env.example → .env"
 fi
 
 # Create virtual environment if it doesn't exist

@@ -81,8 +81,8 @@ class Config:
     # Dapr service app IDs
     DAPR_PRODUCT_SERVICE_APP_ID = os.environ.get('DAPR_PRODUCT_SERVICE_APP_ID', 'product-service')
     
-    # Service Invocation Mode (for consistency with other services)
-    SERVICE_INVOCATION_MODE = os.environ.get('SERVICE_INVOCATION_MODE', 'http')
+    # Platform Mode (for consistency with other services)
+    PLATFORM_MODE = os.environ.get('PLATFORM_MODE', 'direct')
     
     # Logging
     LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO')
