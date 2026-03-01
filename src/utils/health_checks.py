@@ -148,9 +148,15 @@ def perform_readiness_check():
             'latency_ms': None
         }
         
-        # Check external services
+        # Check external services — resolve URL via SERVICE_BASE_URL template or fallback
+        def resolve_service_url(name):
+            base = os.environ.get('SERVICE_BASE_URL', '')
+            if base:
+                return base.replace('{name}', name)
+            return None
+
         external_services = [
-            {'name': 'product-service', 'url': os.environ.get('PRODUCT_SERVICE_URL')},
+            {'name': 'product-service', 'url': resolve_service_url('product-service')},
         ]
         
         for service in external_services:
