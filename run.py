@@ -112,7 +112,7 @@ def consul_register(name, port, host='localhost'):
         'Address': address,
         'Port': port,
         'Check': {
-            'HTTP': f'http://{address}:{port}/health',
+            'HTTP': f'http://{address}:{port}/health/live',
             'Interval': '10s',
             'Timeout': '5s',
             'DeregisterCriticalServiceAfter': '30s',
