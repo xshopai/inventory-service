@@ -8,6 +8,8 @@ import os
 import logging
 from datetime import datetime
 from dotenv import load_dotenv
+import signal
+import requests as http_requests
 
 # Load environment variables
 load_dotenv()
@@ -97,6 +99,52 @@ if tracing_enabled:
         logger.warning(f"Failed to instrument Flask app: {e}")
 
 
+def consul_register(name, port, host='localhost'):
+    """Register this service with Consul (if CONSUL_URL is set)."""
+    consul_url = os.environ.get('CONSUL_URL', '')
+    if not consul_url:
+        return
+    address = 'localhost' if host == '0.0.0.0' else host
+    service_id = f'{name}-{address}-{port}'
+    registration = {
+        'ID': service_id,
+        'Name': name,
+        'Address': address,
+        'Port': port,
+        'Check': {
+            'HTTP': f'http://{address}:{port}/health',
+            'Interval': '10s',
+            'Timeout': '5s',
+            'DeregisterCriticalServiceAfter': '30s',
+        },
+    }
+    try:
+        resp = http_requests.put(
+            f'{consul_url}/v1/agent/service/register',
+            json=registration,
+            timeout=5,
+        )
+        if resp.ok:
+            logger.info(f'[Consul] Registered {name} ({service_id}) at {address}:{port}')
+        else:
+            logger.warning(f'[Consul] Registration failed: {resp.status_code}')
+    except Exception as e:
+        logger.warning(f'[Consul] Registration failed (Consul unavailable): {e}')
+    return service_id
+
+
+def consul_deregister(service_id):
+    """Deregister this service from Consul."""
+    consul_url = os.environ.get('CONSUL_URL', '')
+    if not consul_url or not service_id:
+        return
+    try:
+        http_requests.put(f'{consul_url}/v1/agent/service/deregister/{service_id}', timeout=5)
+        logger.info(f'[Consul] Deregistered {service_id}')
+    except Exception:
+        pass  # Best-effort
+
+
 def main():
     """Main application entry point."""
     # Get environment
@@ -133,6 +181,17 @@ def main():
     
     logger.info(f"Starting Inventory Service on {display_host}:{port}")
     
+    # Register with Consul (if available)
+    service_id = consul_register('inventory-service', port, host)
+
+    # Deregister on shutdown
+    def handle_shutdown(signum, frame):
+        consul_deregister(service_id)
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, handle_shutdown)
+    signal.signal(signal.SIGINT, handle_shutdown)
+
     # Run the application
     # IMPORTANT: use_reloader=False is critical for VS Code debugger to work
     # The reloader spawns a child process which the debugger doesn't attach to

@@ -148,11 +148,50 @@ def perform_readiness_check():
             'latency_ms': None
         }
         
-        # Check external services — resolve URL via SERVICE_BASE_URL template or fallback
+        # Check external services — resolve URL via Consul, SERVICE_BASE_URL, or port registry
         def resolve_service_url(name):
+            # 1. Azure / cloud: SERVICE_BASE_URL template
             base = os.environ.get('SERVICE_BASE_URL', '')
             if base:
                 return base.replace('{name}', name)
+
+            # 2. Consul lookup (sync — best-effort)
+            consul_url = os.environ.get('CONSUL_URL', '')
+            if consul_url:
+                try:
+                    resp = requests.get(
+                        f'{consul_url}/v1/health/service/{name}?passing=true',
+                        timeout=2
+                    )
+                    if resp.ok:
+                        entries = resp.json()
+                        if entries:
+                            svc = entries[0]['Service']
+                            address = svc.get('Address') or 'localhost'
+                            return f"http://{address}:{svc['Port']}"
+                except Exception:
+                    pass  # Fall through to port registry
+
+            # 3. Convention fallback: port registry
+            port_registry = {
+                'product-service': 8001,
+                'user-service': 8002,
+                'admin-service': 8003,
+                'auth-service': 8004,
+                'inventory-service': 8005,
+                'order-service': 8006,
+                'cart-service': 8008,
+                'payment-service': 8009,
+                'review-service': 8010,
+                'notification-service': 8011,
+                'audit-service': 8012,
+                'chat-service': 8013,
+                'web-bff': 8014,
+                'order-processor-service': 8007,
+            }
+            port = port_registry.get(name)
+            if port:
+                return f'http://localhost:{port}'
             return None
 
         external_services = [
